@@ -15,8 +15,9 @@ loaded at the same time.
 
 1. Create `/config/www/dev/` and copy `lan-flow-card.js` there as `lan-flow-card-dev.js`, plus
    `dev/lan-flow-card-dev-loader.js`.
-2. Settings > Dashboards > three-dot menu > Resources: add `/local/dev/lan-flow-card-dev-loader.js`, type
-   *JavaScript module*.
+2. Settings > Dashboards > three-dot menu > Resources: add `/local/dev/lan-flow-card-dev-loader.js?v=1`, type
+   *JavaScript module*. Copy the files first: a browser that asked for the loader before it existed may keep the
+   "404 not found" in its cache; then change `?v=` to get a fresh copy.
 3. Make a test dashboard (or view) with your card configs, with `type: custom:lan-flow-card-dev`.
 
 ## after each change
