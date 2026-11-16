@@ -1009,6 +1009,7 @@ class LanFlowCardEditor extends HTMLElement {
 
   _emit() {
     const config = { ...this._config, nodes: this._config.nodes.map((n) => clean(n)) };
+    if (config.layout === "tree") delete config.layout;  // the default; shown in the form, not written
     const ev = new Event("config-changed", { bubbles: true, composed: true });
     ev.detail = { config: clean({ ...config, nodes: undefined }) };
     ev.detail.config.nodes = config.nodes;
@@ -1030,7 +1031,7 @@ class LanFlowCardEditor extends HTMLElement {
   // Update the forms in place (keeps focus while typing); only the parent lists and titles can change.
   _refresh() {
     if (!this._nodeForms) return;
-    this._cardForm.data = this._config;
+    this._cardForm.data = { layout: "tree", ...this._config };
     this._config.nodes.forEach((n, i) => {
       const f = this._nodeForms[i];
       if (!f) return;
@@ -1056,7 +1057,7 @@ class LanFlowCardEditor extends HTMLElement {
       h3 { font-size: 15px; font-weight: 500; margin: 18px 0 4px; }
     </style>`;
     this._forms = [];
-    this._cardForm = this._form(CARD_SCHEMA, this._config, (v) => {
+    this._cardForm = this._form(CARD_SCHEMA, { layout: "tree", ...this._config }, (v) => {
       const nodes = this._config.nodes;
       this._config = { ...v, nodes };
       this._emit();
