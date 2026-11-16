@@ -100,3 +100,7 @@ per-device sensors made by [examples/amplifi-client-sensors-automation.yaml](exa
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
 - Visual editor.
 - Screenshots in this README.
+
+## license
+
+MIT, see [LICENSE](LICENSE).
