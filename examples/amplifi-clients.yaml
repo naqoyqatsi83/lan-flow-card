@@ -1,0 +1,32 @@
+# An AmpliFi and its Wi-Fi networks, with every device found automatically (the AmpliFi custom integration's
+# trackers). One node per Wi-Fi network, recognised by the device's IP prefix. Add `layout: radial` for the radial
+# view (on cards at least 560 px wide).
+# For per-device history in the tap panel, add the automation in amplifi-client-sensors-automation.yaml.
+type: custom:lan-flow-card
+title: AmpliFi
+down: sensor.amplifi_wan_received_rate     # optional: header rates (else those of the root's first child)
+up: sensor.amplifi_wan_sent_rate
+idle_mbit: 0.002                           # IoT devices send little; dots from 2 kbit/s
+nodes:
+  - id: amplifi
+    name: AmpliFi
+    icon: mdi:wifi
+    color: "#29b6f6"
+  - id: main
+    parent: amplifi
+    name: Wi-Fi
+    icon: mdi:cellphone-wireless
+    color: "#29b6f6"
+    clients:
+      prefix: 192.168.1.
+      icon: mdi:cellphone
+  - id: iot
+    parent: amplifi
+    name: IoT
+    icon: mdi:home-automation
+    color: "#8bc34a"
+    clients:
+      prefix: 192.168.20.
+      icon: mdi:chip
+      exclude:
+        - device_tracker.amplifi_some_device

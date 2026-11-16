@@ -1,0 +1,51 @@
+# A network as a tree: internet, router, a switch and an access point, live traffic per cable.
+# Replace the entity IDs with your own rate sensors (any unit: bit/s, kbit/s, Mbit/s, B/s, kB/s, MB/s, ...).
+# down = traffic from the parent to the node, up = from the node to the parent.
+type: custom:lan-flow-card
+title: Network
+latency: sensor.ping_1_1_1_1_round_trip_time_average   # optional: "ping <n> ms" in the header
+busy_mbit: 5                                            # a node glows from this much traffic
+nodes:
+  - id: internet
+    name: Internet
+    icon: mdi:web
+    color: "#66bb6a"
+  - id: router
+    parent: internet
+    name: Router
+    icon: mdi:router-network
+    color: "#ffca28"
+    down: sensor.router_wan_received_rate
+    up: sensor.router_wan_sent_rate
+    entity: sensor.router_wan_received_rate        # opened by "details" in the history panel
+  - id: switch
+    parent: router
+    name: Office switch
+    icon: mdi:switch
+    color: "#ffca28"
+    down: sensor.switch_office_port_1_sent
+    up: sensor.switch_office_port_1_received
+    link: sensor.switch_office_port_1_link         # "down" dims the node
+  - id: nas
+    parent: switch
+    name: NAS
+    note: office                                   # fixed line under the name
+    icon: mdi:nas
+    color: "#7e57c2"
+    down: sensor.switch_office_port_3_sent
+    up: sensor.switch_office_port_3_received
+  - id: desktop
+    parent: switch
+    name: Desktop
+    icon: mdi:desktop-tower-monitor
+    color: "#26c6da"
+    down: sensor.switch_office_port_4_sent
+    up: sensor.switch_office_port_4_received
+  - id: ap
+    parent: router
+    name: Wi-Fi
+    icon: mdi:wifi
+    color: "#29b6f6"
+    down: sensor.router_lan2_sent_rate
+    up: sensor.router_lan2_received_rate
+    note_entity: sensor.wifi_clients               # live line under the name, from an entity

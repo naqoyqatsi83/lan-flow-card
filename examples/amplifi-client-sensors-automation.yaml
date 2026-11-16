@@ -1,0 +1,81 @@
+# AmpliFi client sensors: down, up and signal for every AmpliFi Wi-Fi client as sensors of their own, so HA keeps
+# their history (and long-term statistics). lan-flow-card's history panel reads them for `clients` nodes.
+# How: every 10 s this reads the AmpliFi trackers (home, with SignalQuality) and publishes one MQTT message per
+# device; every 15 min, at HA start and when run by hand it publishes MQTT discovery, so new devices get their
+# sensors within 15 min. RxBytes_15sec / TxBytes_15sec are the bytes of the last 15 s (missing when 0; Rx is towards
+# the device), published in kbit/s with one decimal; signal is SignalQuality in %.
+# Entities: one MQTT device "Wi-Fi <tracker name>" per client with sensor.wi_fi_<name>_down, _up and _signal.
+# Needs: the AmpliFi custom integration (its trackers) and the MQTT integration.
+# Paste into: Settings > Automations & scenes > Create automation > Create new automation, then three-dot menu >
+# Edit in YAML. Save, then Run actions once.
+# Tip: the trackers' own history is then not needed; `recorder: exclude: entity_globs: [device_tracker.amplifi_*]`
+# keeps the database small (each tracker writes ~40 attributes every 10 s).
+alias: AmpliFi client sensors
+description: Publish down, up and signal per AmpliFi Wi-Fi client over MQTT (with discovery).
+mode: queued
+max: 3
+triggers:
+  - trigger: time_pattern
+    seconds: "/10"
+    id: state
+  - trigger: time_pattern
+    minutes: "/15"
+    id: discovery
+  - trigger: homeassistant
+    event: start
+    id: discovery
+conditions: []
+actions:
+  - variables:
+      clients: >
+        {% set ns = namespace(out=[]) %}
+        {% for s in states.device_tracker
+             if s.state == 'home' and s.attributes.get('SignalQuality') is not none %}
+          {% set ns.out = ns.out + [{
+               'key': s.object_id[8:] if s.object_id.startswith('amplifi_') else s.object_id,
+               'name': s.name,
+               'down': ((s.attributes.get('RxBytes_15sec', 0) | float(0)) * 8 / 15 / 1000) | round(1),
+               'up': ((s.attributes.get('TxBytes_15sec', 0) | float(0)) * 8 / 15 / 1000) | round(1),
+               'signal': s.attributes.get('SignalQuality') | int(0)}] %}
+        {% endfor %}
+        {{ ns.out }}
+  - choose:
+      # also when run by hand (Run actions has no trigger)
+      - conditions:
+          - condition: template
+            value_template: "{{ (trigger.id | default('')) != 'state' }}"
+        sequence:
+          - repeat:
+              for_each: "{{ clients }}"
+              sequence:
+                - action: mqtt.publish
+                  data:
+                    topic: "homeassistant/device/amplifi_client_{{ repeat.item.key }}/config"
+                    retain: true
+                    payload: >
+                      {% set k = repeat.item.key %}
+                      {% set rate = {'p': 'sensor', 'device_class': 'data_rate', 'unit_of_measurement': 'kbit/s',
+                                     'state_class': 'measurement', 'suggested_display_precision': 1,
+                                     'expire_after': 60} %}
+                      {{ {
+                        'dev': {'ids': ['amplifi_client_' ~ k], 'name': 'Wi-Fi ' ~ repeat.item.name,
+                                'mf': 'AmpliFi', 'mdl': 'Wi-Fi client'},
+                        'o': {'name': 'HA automation AmpliFi client sensors'},
+                        'state_topic': 'amplifi-clients/' ~ k ~ '/state',
+                        'cmps': {
+                          'down': dict(rate, name='Down', unique_id='amplifi_client_' ~ k ~ '_down',
+                                       value_template='{{ value_json.down }}', icon='mdi:download'),
+                          'up': dict(rate, name='Up', unique_id='amplifi_client_' ~ k ~ '_up',
+                                     value_template='{{ value_json.up }}', icon='mdi:upload'),
+                          'signal': {'p': 'sensor', 'name': 'Signal', 'unique_id': 'amplifi_client_' ~ k ~ '_signal',
+                                     'unit_of_measurement': '%', 'state_class': 'measurement', 'expire_after': 60,
+                                     'icon': 'mdi:wifi', 'value_template': '{{ value_json.signal }}'}
+                        }
+                      } | to_json }}
+  - repeat:
+      for_each: "{{ clients }}"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "amplifi-clients/{{ repeat.item.key }}/state"
+            payload: "{{ {'down': repeat.item.down, 'up': repeat.item.up, 'signal': repeat.item.signal} | to_json }}"
