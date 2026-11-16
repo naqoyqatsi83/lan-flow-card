@@ -259,6 +259,8 @@ class LanFlowCard extends HTMLElement {
 
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     const root = this.shadowRoot;
+    const keep = this._panel && this._panel.isConnected ? this._panel : null;
+    if (keep) keep.remove();
     root.innerHTML = "";
     const style = document.createElement("style");
     style.textContent = `
@@ -447,9 +449,16 @@ class LanFlowCard extends HTMLElement {
     }
     card.appendChild(area);
     root.appendChild(card);
-    this._panel = null;
-    this._panelFor = null;
-    clearInterval(this._panelTimer);
+    // An open history panel survives the rebuild (devices come and go): moved into the new card, same place,
+    // same range, its reload timer keeps running. Closed only if its node is gone.
+    if (keep && this._nodes.some((n) => n.id === this._panelFor)) {
+      card.appendChild(keep);
+      this._panel = keep;
+    } else {
+      this._panel = null;
+      this._panelFor = null;
+      clearInterval(this._panelTimer);
+    }
     this._built = true;
     this._last = {};
     if (this._hass) this._update();
@@ -769,7 +778,7 @@ class LanFlowCard extends HTMLElement {
       panel.style.top = Math.max(4, above) + "px";
     }
     panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    this._dragPanel(panel, card);
+    this._dragPanel(panel);
     load();
     this._panelTimer = setInterval(() => { if (this._panel === panel && panel.isConnected) load(); }, 30000);
   }
@@ -807,8 +816,10 @@ class LanFlowCard extends HTMLElement {
   }
 
   // Drag the panel by its title bar (mouse or finger), kept inside the card.
-  _dragPanel(panel, card) {
+  _dragPanel(panel) {
     const bar = panel.querySelector(".top");
+    const card = { get offsetWidth() { return panel.parentNode ? panel.parentNode.offsetWidth : 0; },
+                   get offsetHeight() { return panel.parentNode ? panel.parentNode.offsetHeight : 0; } };
     // the card clips what sticks out: when the panel grows (chart loaded, fields opened), move it up to stay inside
     new ResizeObserver(() => {
       const over = panel.offsetTop + panel.offsetHeight - (card.offsetHeight - 4);

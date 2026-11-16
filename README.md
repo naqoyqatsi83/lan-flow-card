@@ -119,6 +119,7 @@ To try changes in your own Home Assistant next to the released card (no second i
 
 ## tests
 
+`tests/panel-keep-test.html` checks that an open panel survives the card rebuilding (a device joins or leaves).
 `tests/panel-test.html` opens a client's history panel in the demo, drags it, hovers the chart and unfolds "all
 fields" (look at the result). `tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
 with a stand-in for HA's form: serve the repo over HTTP and open it; every line should say PASS.

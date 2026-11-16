@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>panel keep test</title><pre id="out"></pre>
+<!-- The history panel must survive a rebuild of the card (a device joins or leaves). Every line should say PASS. -->
+<iframe id="f" src="../demo/?cfg=wifi&w=900&panel=6" style="width:940px;height:900px;border:0"></iframe>
+<script>
+const f = document.getElementById("f"), log = [];
+const ok = (c, w) => log.push((c ? "PASS " : "FAIL ") + w);
+f.onload = () => setTimeout(() => {
+  const el = f.contentDocument.querySelector("lan-flow-card");
+  const panel = () => el.shadowRoot.querySelector(".panel");
+  ok(panel(), "panel open");
+  const before = panel();
+  before.style.left = "33px"; before.style.top = "44px";
+  const hass = el._hass;
+  const states = { ...hass.states, "device_tracker.amplifi_newcomer": { state: "home", attributes: { friendly_name: "Newcomer", Address: "192.168.1.77", SignalQuality: 70 } } };
+  el.hass = { ...hass, states };
+  ok(el.shadowRoot.textContent.includes("Newcomer") || [...el.shadowRoot.querySelectorAll(".clabel")].some((l) => l.textContent.includes("Newcomer")), "card rebuilt with the new device");
+  ok(panel() === before, "same panel element after the rebuild");
+  ok(panel() && panel().style.left === "33px" && panel().style.top === "44px", "same position");
+  const states2 = { ...states };
+  delete states2["device_tracker.amplifi_phone_tom"];
+  el.hass = { ...hass, states: states2 };
+  ok(!panel(), "closed when its device is gone");
+  document.getElementById("out").textContent = log.join("\n");
+}, 1500);
+</script>
