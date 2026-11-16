@@ -269,9 +269,9 @@ class LanFlowCard extends HTMLElement {
       .panel { position: absolute; left: 8px; right: 8px; z-index: 5; max-width: 560px; margin: 0 auto;
                background: var(--card-background-color, #1c1c1c); border: 1px solid var(--divider-color, #444);
                border-radius: 12px; padding: 10px 12px 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
-               font-size: 12px; color: var(--secondary-text-color); }
+               font-size: 13px; color: var(--secondary-text-color); }
       .panel .top { display: flex; align-items: baseline; gap: 8px; }
-      .panel .top b { font-size: 15px; font-weight: 500; color: var(--primary-text-color); flex: 1;
+      .panel .top b { font-size: 16px; font-weight: 500; color: var(--primary-text-color); flex: 1;
                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .panel button { background: none; border: 1px solid var(--divider-color, #444); border-radius: 12px;
                       color: var(--primary-text-color); font: inherit; padding: 2px 9px; cursor: pointer; }
@@ -281,19 +281,19 @@ class LanFlowCard extends HTMLElement {
       .panel .ranges { display: flex; gap: 6px; margin: 4px 0; flex-wrap: wrap; }
       .panel .ranges .more { margin-left: auto; }
       .panel svg { position: static; display: block; overflow: visible; }
-      .panel .axis { font: 10px sans-serif; fill: var(--secondary-text-color); }
+      .panel .axis { font: 11.5px sans-serif; fill: var(--secondary-text-color); }
       .panel .grid { stroke: var(--divider-color, #444); stroke-width: 1; }
       .panel .msg { padding: 24px 0; text-align: center; }
       .panel .chart { min-height: 230px; position: relative; }
       .panel .top { cursor: move; touch-action: none; user-select: none; }
-      .panel .fields { display: none; max-height: 160px; overflow: auto; margin: 4px 0; font-size: 11px;
+      .panel .fields { display: none; max-height: 160px; overflow: auto; margin: 4px 0; font-size: 12px;
                        border: 1px solid var(--divider-color, #444); border-radius: 6px; padding: 4px 8px; }
       .panel .fields.open { display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
       .panel .fields span:nth-child(odd) { color: var(--primary-text-color); }
       .panel .fields span:nth-child(even) { overflow-wrap: anywhere; }
       .panel .hover { position: absolute; top: 0; pointer-events: none; display: none; white-space: nowrap;
                       background: var(--card-background-color, #1c1c1c); border: 1px solid var(--divider-color, #444);
-                      border-radius: 6px; padding: 3px 7px; font-size: 11px; line-height: 15px; z-index: 2;
+                      border-radius: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 17px; z-index: 2;
                       color: var(--primary-text-color); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
       .panel .hover .d { color: var(--nfc-down, #29b6f6); }
       .panel .hover .u { color: var(--nfc-up, #ffa726); }
@@ -853,7 +853,7 @@ class LanFlowCard extends HTMLElement {
   }
 
   _drawHistory(chart, series, t0, t1) {
-    const W = Math.max(240, chart.clientWidth || 300), H = 150, SH = series.signal ? 34 : 4, L = 44, B = 16;
+    const W = Math.max(240, chart.clientWidth || 300), H = 160, SH = series.signal ? 46 : 4, L = 64, B = 18;
     const n = series.down && series.down.stats ? Math.min(240, Math.ceil((t1 - t0) / 3600e3))
       : Math.min(240, Math.floor((W - L) / 2));
     const d = this._buckets(series.down, t0, t1, n), u = this._buckets(series.up, t0, t1, n);
@@ -892,20 +892,26 @@ class LanFlowCard extends HTMLElement {
     svg.appendChild(svgEl("path", { d: area(d, yD, "mean"), fill: down, opacity: 0.85 }));
     svg.appendChild(svgEl("path", { d: area(u, yU, "peak"), fill: up, opacity: 0.25 }));
     svg.appendChild(svgEl("path", { d: area(u, yU, "mean"), fill: up, opacity: 0.85 }));
-    // signal, 0 to 100 % (clients only)
-    const s0 = H + 6;
-    if (series.signal) svg.appendChild(svgEl("line", { x1: L, x2: W, y1: s0 + SH - 4, y2: s0 + SH - 4, class: "grid" }));
-    const sl = svgEl("text", { x: L - 4, y: s0 + SH / 2, class: "axis", "text-anchor": "end" });
-    sl.textContent = "signal";
-    if (series.signal) svg.appendChild(sl);
-    let sp = "";
-    sig.forEach((p, i) => { if (p) sp += (sp && sig[i - 1] ? " L " : " M ") + `${x(i)} ${s0 + (SH - 4) * (1 - p.mean / 100)}`; });
-    if (sp) svg.appendChild(svgEl("path", { d: sp, fill: "none", stroke: "var(--secondary-text-color)", "stroke-width": 1.5 }));
-    const lastSig = [...sig].reverse().find((p) => p);
-    if (lastSig) {
-      const t = svgEl("text", { x: W, y: s0 + 8, class: "axis", "text-anchor": "end" });
-      t.textContent = Math.round(lastSig.mean) + "%";
-      svg.appendChild(t);
+    // Signal (clients only): its own strip, scaled to the range it used (at least 10 points wide), so changes show;
+    // the range in the left column like the traffic scale.
+    const s0 = H + 8;
+    const sv = sig.filter((p) => p).map((p) => p.mean);
+    if (series.signal && sv.length) {
+      let lo = Math.floor(Math.min(...sv) / 5) * 5, hi = Math.ceil(Math.max(...sv) / 5) * 5;
+      if (hi - lo < 10) { lo = Math.max(0, hi - 10); hi = lo + 10; }
+      const ys = (v) => s0 + (SH - 6) * (1 - (v - lo) / (hi - lo));
+      for (const [v, t] of [[hi, hi + "%"], [lo, lo + "%"]]) {
+        svg.appendChild(svgEl("line", { x1: L, x2: W, y1: ys(v), y2: ys(v), class: "grid", opacity: 0.5 }));
+        const lab = svgEl("text", { x: L - 4, y: ys(v) + 4, class: "axis", "text-anchor": "end" });
+        lab.textContent = t;
+        svg.appendChild(lab);
+      }
+      const name = svgEl("text", { x: 2, y: s0 + (SH - 6) / 2 + 4, class: "axis" });
+      name.textContent = "signal";
+      svg.appendChild(name);
+      let sp = "";
+      sig.forEach((p, i) => { if (p) sp += (sp && sig[i - 1] ? " L " : " M ") + `${x(i)} ${ys(p.mean)}`; });
+      svg.appendChild(svgEl("path", { d: sp, fill: "none", stroke: "var(--primary-text-color)", "stroke-width": 1.5, opacity: 0.8 }));
     }
     // time labels: start, middle, now
     const fmtT = (t) => {
