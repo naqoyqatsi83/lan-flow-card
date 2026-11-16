@@ -282,7 +282,20 @@ class LanFlowCard extends HTMLElement {
       .panel .axis { font: 10px sans-serif; fill: var(--secondary-text-color); }
       .panel .grid { stroke: var(--divider-color, #444); stroke-width: 1; }
       .panel .msg { padding: 24px 0; text-align: center; }
-      .panel .chart { min-height: 230px; }
+      .panel .chart { min-height: 230px; position: relative; }
+      .panel .top { cursor: move; touch-action: none; user-select: none; }
+      .panel .fields { display: none; max-height: 160px; overflow: auto; margin: 4px 0; font-size: 11px;
+                       border: 1px solid var(--divider-color, #444); border-radius: 6px; padding: 4px 8px; }
+      .panel .fields.open { display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
+      .panel .fields span:nth-child(odd) { color: var(--primary-text-color); }
+      .panel .fields span:nth-child(even) { overflow-wrap: anywhere; }
+      .panel .hover { position: absolute; top: 0; pointer-events: none; display: none; white-space: nowrap;
+                      background: var(--card-background-color, #1c1c1c); border: 1px solid var(--divider-color, #444);
+                      border-radius: 6px; padding: 3px 7px; font-size: 11px; line-height: 15px; z-index: 2;
+                      color: var(--primary-text-color); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+      .panel .hover .d { color: var(--nfc-down, #29b6f6); }
+      .panel .hover .u { color: var(--nfc-up, #ffa726); }
+      .panel .cursor { stroke: var(--secondary-text-color); stroke-width: 1; stroke-dasharray: 2 2; display: none; }
       .ring { fill: none; stroke: var(--divider-color, #444); stroke-dasharray: 2 4; }
       .ringlabel { font: 10px sans-serif; fill: var(--secondary-text-color); text-anchor: middle; }
       .sector { fill: none; stroke-width: 4; stroke-linecap: round; opacity: .7; }
@@ -658,8 +671,8 @@ class LanFlowCard extends HTMLElement {
       // client sensors are kbit/s (automation "AmpliFi client sensors"); others Mbit/s unless the unit says else
       return UNIT_TO_MBIT[u] === undefined ? (n._client ? 1e-3 : 1) : UNIT_TO_MBIT[u];
     };
-    panel.innerHTML = `<div class="top"><b></b><button class="x" title="close">\u00d7</button></div>
-      <div class="facts"></div><div class="ranges"></div><div class="chart"></div>`;
+    panel.innerHTML = `<div class="top" title="drag to move"><b></b><button class="x" title="close">\u00d7</button></div>
+      <div class="facts"></div><div class="fields"></div><div class="ranges"></div><div class="chart"></div>`;
     panel.querySelector("b").textContent = n.name;
     panel.querySelector(".facts").textContent = facts.join(", ");
     panel.querySelector(".x").addEventListener("click", () => this._openPanel(n, p));
@@ -677,11 +690,33 @@ class LanFlowCard extends HTMLElement {
       });
       ranges.appendChild(b);
     }
-    if (n.entity) {
+    if (n._client) {
+      // the tracker's raw fields right here (HA's own dialog would only show home / away)
       const more = document.createElement("button");
       more.className = "more";
-      more.textContent = n._client ? "tracker" : "details";
-      more.title = n._client ? "all the AmpliFi's fields for this device" : n.entity;
+      more.textContent = "all fields";
+      more.title = "everything the router reports for this device";
+      const box = panel.querySelector(".fields");
+      more.addEventListener("click", () => {
+        const st = this._hass.states[n._client];
+        box.innerHTML = "";
+        for (const [k, v] of Object.entries(st ? st.attributes : {}).sort(([a], [b]) => a.localeCompare(b))) {
+          if (["friendly_name", "icon", "entity_picture"].includes(k)) continue;
+          const key = document.createElement("span");
+          key.textContent = k;
+          const val = document.createElement("span");
+          val.textContent = typeof v === "object" ? JSON.stringify(v) : String(v);
+          box.append(key, val);
+        }
+        box.classList.toggle("open");
+        more.classList.toggle("on", box.classList.contains("open"));
+      });
+      ranges.appendChild(more);
+    } else if (n.entity) {
+      const more = document.createElement("button");
+      more.className = "more";
+      more.textContent = "details";
+      more.title = n.entity;
       more.addEventListener("click", () => this._more(n.entity));
       ranges.appendChild(more);
     }
@@ -734,6 +769,7 @@ class LanFlowCard extends HTMLElement {
       panel.style.top = Math.max(4, above) + "px";
     }
     panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    this._dragPanel(panel, card);
     load();
     this._panelTimer = setInterval(() => { if (this._panel === panel && panel.isConnected) load(); }, 30000);
   }
@@ -768,6 +804,41 @@ class LanFlowCard extends HTMLElement {
       out.push(covered ? { mean: sum / covered, peak } : null);
     }
     return out;
+  }
+
+  // Drag the panel by its title bar (mouse or finger), kept inside the card.
+  _dragPanel(panel, card) {
+    const bar = panel.querySelector(".top");
+    // the card clips what sticks out: when the panel grows (chart loaded, fields opened), move it up to stay inside
+    new ResizeObserver(() => {
+      const over = panel.offsetTop + panel.offsetHeight - (card.offsetHeight - 4);
+      if (over > 0) panel.style.top = Math.max(0, panel.offsetTop - over) + "px";
+    }).observe(panel);
+    bar.addEventListener("pointerdown", (ev) => {
+      if (ev.target.closest("button")) return;
+      ev.preventDefault();
+      const x0 = ev.clientX, y0 = ev.clientY, l0 = panel.offsetLeft, t0 = panel.offsetTop;
+      // from "centered with margins" to an explicit position and width
+      panel.style.width = panel.offsetWidth + "px";
+      panel.style.right = "auto";
+      panel.style.margin = "0";
+      panel.style.left = l0 + "px";
+      try { bar.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic events have no pointer */ }
+      const move = (e) => {
+        const left = Math.min(Math.max(0, l0 + e.clientX - x0), card.offsetWidth - panel.offsetWidth);
+        const top = Math.max(0, Math.min(t0 + e.clientY - y0, card.offsetHeight - panel.offsetHeight - 4));
+        panel.style.left = left + "px";
+        panel.style.top = top + "px";
+      };
+      const up = () => {
+        bar.removeEventListener("pointermove", move);
+        bar.removeEventListener("pointerup", up);
+        bar.removeEventListener("pointercancel", up);
+      };
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", up);
+      bar.addEventListener("pointercancel", up);
+    });
   }
 
   _drawHistory(chart, series, t0, t1) {
@@ -836,8 +907,47 @@ class LanFlowCard extends HTMLElement {
       lab.textContent = fmtT(t);
       svg.appendChild(lab);
     });
+    // Hover (or touch): a line at the pointer and a box with the time and the values of that time slot.
+    const cursor = svgEl("line", { y1: 0, y2: H + SH, class: "cursor" });
+    svg.appendChild(cursor);
+    const hit = svgEl("rect", { x: L, y: 0, width: W - L, height: H + SH, fill: "transparent" });
+    svg.appendChild(hit);
+    const tip = document.createElement("div");
+    tip.className = "hover";
+    const slot = (t1 - t0) / n;
+    const fmtFull = (t) => new Date(t).toLocaleString(undefined, t1 - t0 > 864e5 * 1.5
+      ? { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }
+      : { hour: "2-digit", minute: "2-digit" });
+    const show = (ev) => {
+      const box = svg.getBoundingClientRect();
+      const px = ev.clientX - box.left;
+      const i = Math.min(n - 1, Math.max(0, Math.floor(((px - L) / (W - L)) * n)));
+      const v = (b, f) => (b[i] ? f(b[i]) : "-");
+      cursor.setAttribute("x1", x(i));
+      cursor.setAttribute("x2", x(i));
+      cursor.style.display = "block";
+      tip.innerHTML = "";
+      const line = (cls, text) => {
+        const div = document.createElement("div");
+        if (cls) div.className = cls;
+        div.textContent = text;
+        tip.appendChild(div);
+      };
+      line("", fmtFull(t0 + i * slot) + (slot >= 120e3 ? " - " + fmtFull(t0 + (i + 1) * slot).split(", ").pop() : ""));
+      line("d", DOWN + " " + v(d, (p) => kb(p.mean) + " (peak " + kb(p.peak) + ")"));
+      line("u", UP + " " + v(u, (p) => kb(p.mean) + " (peak " + kb(p.peak) + ")"));
+      if (series.signal) line("", "signal " + v(sig, (p) => Math.round(p.mean) + "%"));
+      tip.style.display = "block";
+      const left = x(i) + 10 + tip.offsetWidth > W ? x(i) - 10 - tip.offsetWidth : x(i) + 10;
+      tip.style.left = Math.max(0, left) + "px";
+    };
+    const hide = () => { cursor.style.display = "none"; tip.style.display = "none"; };
+    hit.addEventListener("pointermove", show);
+    hit.addEventListener("pointerdown", show);
+    hit.addEventListener("pointerleave", hide);
     chart.innerHTML = "";
     chart.appendChild(svg);
+    chart.appendChild(tip);
     const sum = (b) => b.filter((p) => p).reduce((s, p) => s + p.mean, 0) / Math.max(1, b.filter((p) => p).length);
     const note = document.createElement("div");
     note.className = "facts";

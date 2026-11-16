@@ -20,7 +20,8 @@ No dependencies, one JavaScript file.
 - **Radial view** (`layout: radial`): the access point in the middle, devices around it in a sector per network, the
   stronger the signal the closer.
 - **History panel** on tap: down and up (and signal for clients) over 1 h, 6 h, 24 h from the recorder, 7 and 30
-  days from long-term statistics.
+  days from long-term statistics. Hover (or touch) the chart for the values at that time; drag the panel by its
+  title; "all fields" lists everything the router reports for a client.
 - **Phone friendly**: narrow cards switch to a compact layout.
 - **Visual editor**: card options and every node in HA's card editor, with entity and icon pickers; YAML still works.
 
@@ -118,7 +119,8 @@ To try changes in your own Home Assistant next to the released card (no second i
 
 ## tests
 
-`tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
+`tests/panel-test.html` opens a client's history panel in the demo, drags it, hovers the chart and unfolds "all
+fields" (look at the result). `tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
 with a stand-in for HA's form: serve the repo over HTTP and open it; every line should say PASS.
 
 ## roadmap

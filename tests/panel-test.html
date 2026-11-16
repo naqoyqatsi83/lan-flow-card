@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>panel test</title>
+<!-- Opens a client's history panel in the demo, drags it, hovers the chart, unfolds "all fields"; then screenshot. -->
+<iframe id="f" src="../demo/?cfg=wifi&w=900&panel=6" style="width:940px;height:900px;border:0"></iframe>
+<script>
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => {
+  const card = f.contentDocument.querySelector("lan-flow-card").shadowRoot;
+  const panel = card.querySelector(".panel");
+  const top = panel.querySelector(".top");
+  const r = top.getBoundingClientRect();
+  const P = (type, el, x, y) => el.dispatchEvent(new f.contentWindow.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 1 }));
+  P("pointerdown", top, r.left + 60, r.top + 8);
+  P("pointermove", top, r.left + 60 - 300, r.top + 8 + 260);
+  P("pointerup", top, r.left - 240, r.top + 268);
+  setTimeout(() => {
+    const rect = panel.querySelector(".chart svg rect");
+    const b = rect.getBoundingClientRect();
+    P("pointermove", rect, b.left + b.width * 0.62, b.top + 40);
+    [...panel.querySelectorAll("button")].find((x) => x.textContent === "all fields").click();
+    document.title = "done " + panel.style.left + " " + panel.style.top;
+  }, 1500);
+}, 1200);
+</script>
