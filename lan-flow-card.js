@@ -76,6 +76,20 @@ function svgEl(tag, attrs) {
 }
 
 class LanFlowCard extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement(NAME + "-editor");
+  }
+
+  static getStubConfig() {
+    return {
+      title: "Network",
+      nodes: [
+        { id: "internet", name: "Internet", icon: "mdi:web", color: "#66bb6a" },
+        { id: "router", parent: "internet", name: "Router", icon: "mdi:router-network", color: "#ffca28" },
+      ],
+    };
+  }
+
   setConfig(config) {
     if (!config.nodes || !config.nodes.length) throw new Error("nodes: list them, the first one is the root");
     const ids = new Set(config.nodes.map((n) => n.id));
@@ -888,12 +902,267 @@ class LanFlowCard extends HTMLElement {
   }
 }
 
+
+// ---- visual editor ----------------------------------------------------------------------------------------------
+// HA's card editor shows this instead of YAML. Card options in one ha-form, then one collapsible section per node.
+// ha-form and its pickers are lazy-loaded by HA; loading the entities card's editor makes sure they exist.
+async function loadHaForm() {
+  if (customElements.get("ha-form") && customElements.get("ha-entity-picker")) return;
+  try {
+    const helpers = await window.loadCardHelpers();
+    const card = await helpers.createCardElement({ type: "entities", entities: [] });
+    await card.constructor.getConfigElement();
+  } catch (e) { /* the editor still renders; HA falls back to YAML if ha-form is missing */ }
+}
+
+const LABELS = {
+  title: "Title", layout: "Layout", down: "Down sensor (towards it)", up: "Up sensor (away from it)",
+  latency: "Ping sensor (ms)", busy_mbit: "Glow from (Mbit/s)", idle_mbit: "Dots from (Mbit/s)",
+  id: "ID", name: "Name", parent: "Parent", icon: "Icon", color: "Color (#rrggbb)", link: "Link sensor",
+  entity: "Details entity", note: "Note (fixed text)", note_entity: "Note from entity", note_attribute: "Attribute",
+  clients: "Find clients automatically (AmpliFi trackers)", prefix: "IP prefix, e.g. 192.168.1.",
+  exclude: "Leave out",
+};
+const HELPERS = {
+  down: "Traffic from the parent to this node", up: "Traffic from this node to the parent",
+  link: "A state of \"down\" dims the node", entity: "Opened by \"details\" in the history panel",
+  layout: "Radial needs nodes that find their clients", idle_mbit: "Below this a cable has no dots",
+};
+const sensor = { entity: { domain: "sensor" } };
+const CARD_SCHEMA = [
+  { name: "title", selector: { text: {} } },
+  { name: "layout", selector: { select: { mode: "dropdown", options: [
+    { value: "tree", label: "Tree" }, { value: "radial", label: "Radial" }] } } },
+  { type: "grid", name: "", schema: [{ name: "down", selector: sensor }, { name: "up", selector: sensor }] },
+  { name: "latency", selector: sensor },
+  { type: "grid", name: "", schema: [
+    { name: "busy_mbit", selector: { number: { min: 0, step: 0.1, mode: "box" } } },
+    { name: "idle_mbit", selector: { number: { min: 0, step: 0.001, mode: "box" } } }] },
+];
+
+function nodeSchema(node, nodes) {
+  const root = node === nodes[0];
+  // a node can't hang below itself or below one of its own children
+  const below = new Set([node.id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of nodes) if (n.parent && below.has(n.parent) && !below.has(n.id)) { below.add(n.id); grew = true; }
+  }
+  const parents = nodes.filter((n) => !below.has(n.id)).map((n) => ({ value: n.id, label: n.name || n.id }));
+  return [
+    { type: "grid", name: "", schema: [
+      { name: "id", required: true, selector: { text: {} } }, { name: "name", selector: { text: {} } }] },
+    ...(root ? [] : [{ name: "parent", required: true, selector: { select: { mode: "dropdown", options: parents } } }]),
+    { type: "grid", name: "", schema: [{ name: "icon", selector: { icon: {} } }, { name: "color", selector: { text: {} } }] },
+    ...(root ? [] : [
+      { type: "grid", name: "", schema: [{ name: "down", selector: sensor }, { name: "up", selector: sensor }] },
+      { name: "link", selector: { entity: {} } }]),
+    { name: "entity", selector: { entity: {} } },
+    { name: "note", selector: { text: {} } },
+    { type: "grid", name: "", schema: [
+      { name: "note_entity", selector: { entity: {} } },
+      { name: "note_attribute", selector: { attribute: {} }, context: { filter_entity: "note_entity" } }] },
+    ...(root ? [] : [{ name: "clients", type: "expandable", title: LABELS.clients, schema: [
+      { name: "prefix", selector: { text: {} } }, { name: "icon", selector: { icon: {} } },
+      { name: "exclude", selector: { entity: { multiple: true, domain: "device_tracker" } } }] }]),
+  ];
+}
+
+// Drop what the forms leave behind when a field is cleared: "", undefined, [], {} (also inside clients).
+function clean(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === "" || v === undefined || v === null) continue;
+    if (Array.isArray(v) && !v.length) continue;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const c = clean(v);
+      if (Object.keys(c).length) out[k] = c;
+      continue;
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+class LanFlowCardEditor extends HTMLElement {
+  setConfig(config) {
+    const next = JSON.parse(JSON.stringify(config || {}));
+    next.nodes = next.nodes || [];
+    const shape = (c) => c.nodes.map((n) => n.id).join("|");
+    const rebuild = !this._config || shape(this._config) !== shape(next);
+    this._config = next;
+    if (rebuild) this._build(); else this._refresh();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    for (const f of this._forms || []) f.hass = hass;
+  }
+
+  connectedCallback() {
+    if (!this._loaded) {
+      this._loaded = true;
+      loadHaForm().then(() => this._build());
+    }
+  }
+
+  _emit() {
+    const config = { ...this._config, nodes: this._config.nodes.map((n) => clean(n)) };
+    const ev = new Event("config-changed", { bubbles: true, composed: true });
+    ev.detail = { config: clean({ ...config, nodes: undefined }) };
+    ev.detail.config.nodes = config.nodes;
+    this.dispatchEvent(ev);
+  }
+
+  _form(schema, data, onChange) {
+    const f = document.createElement("ha-form");
+    f.hass = this._hass;
+    f.schema = schema;
+    f.data = data;
+    f.computeLabel = (s) => LABELS[s.name] || s.title || s.name;
+    f.computeHelper = (s) => HELPERS[s.name];
+    f.addEventListener("value-changed", (ev) => { ev.stopPropagation(); onChange(ev.detail.value); });
+    this._forms.push(f);
+    return f;
+  }
+
+  // Update the forms in place (keeps focus while typing); only the parent lists and titles can change.
+  _refresh() {
+    if (!this._nodeForms) return;
+    this._cardForm.data = this._config;
+    this._config.nodes.forEach((n, i) => {
+      const f = this._nodeForms[i];
+      if (!f) return;
+      f.schema = nodeSchema(n, this._config.nodes);
+      f.data = n;
+      this._titles[i].textContent = (n.name || n.id) + (i === 0 ? " (root)" : "");
+    });
+  }
+
+  _build() {
+    if (!this._config) return;
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    const root = this.shadowRoot;
+    root.innerHTML = `<style>
+      :host { display: block; }
+      details { border: 1px solid var(--divider-color, #444); border-radius: 8px; margin: 8px 0; }
+      summary { cursor: pointer; padding: 10px 12px; font-weight: 500; }
+      .body { padding: 0 12px 12px; }
+      .tools { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+      button { background: none; color: var(--primary-color); border: 1px solid var(--divider-color, #444);
+               border-radius: 16px; padding: 4px 12px; font: inherit; cursor: pointer; }
+      button:disabled { color: var(--disabled-text-color, #777); cursor: default; }
+      h3 { font-size: 15px; font-weight: 500; margin: 18px 0 4px; }
+    </style>`;
+    this._forms = [];
+    this._cardForm = this._form(CARD_SCHEMA, this._config, (v) => {
+      const nodes = this._config.nodes;
+      this._config = { ...v, nodes };
+      this._emit();
+    });
+    root.appendChild(this._cardForm);
+    const h = document.createElement("h3");
+    h.textContent = "Nodes (the first one is the root)";
+    root.appendChild(h);
+    this._nodeForms = [];
+    this._titles = [];
+    const nodes = this._config.nodes;
+    nodes.forEach((n, i) => {
+      const d = document.createElement("details");
+      if (this._open === n.id) d.open = true;
+      d.addEventListener("toggle", () => { if (d.open) this._open = this._config.nodes[i] && this._config.nodes[i].id; });
+      const sum = document.createElement("summary");
+      sum.textContent = (n.name || n.id) + (i === 0 ? " (root)" : "");
+      this._titles.push(sum);
+      d.appendChild(sum);
+      const body = document.createElement("div");
+      body.className = "body";
+      const f = this._form(nodeSchema(n, nodes), n, (v) => this._nodeChanged(i, v));
+      this._nodeForms.push(f);
+      body.appendChild(f);
+      const tools = document.createElement("div");
+      tools.className = "tools";
+      const btn = (label, disabled, fn) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.disabled = disabled;
+        b.addEventListener("click", fn);
+        tools.appendChild(b);
+      };
+      btn("Move up", i <= 1, () => this._move(i, -1));
+      btn("Move down", i === 0 || i === nodes.length - 1, () => this._move(i, 1));
+      btn("Add child", false, () => this._add(n.id));
+      btn("Remove", i === 0, () => this._remove(i));
+      body.appendChild(tools);
+      d.appendChild(body);
+      root.appendChild(d);
+    });
+    const add = document.createElement("button");
+    add.textContent = nodes.length ? "Add node" : "Add root node";
+    add.addEventListener("click", () => this._add(nodes.length ? nodes[0].id : null));
+    root.appendChild(add);
+  }
+
+  _nodeChanged(i, value) {
+    const nodes = this._config.nodes.map((n) => ({ ...n }));
+    const old = nodes[i].id;
+    nodes[i] = value;
+    const id = (value.id || "").trim();
+    // a new ID: children follow; an empty or taken one is not applied
+    if (id && id !== old && !nodes.some((n, j) => j !== i && n.id === id)) {
+      nodes[i].id = id;
+      for (const n of nodes) if (n.parent === old) n.parent = id;
+    } else {
+      nodes[i].id = old;
+    }
+    this._open = nodes[i].id;
+    this._config = { ...this._config, nodes };
+    this._emit();
+  }
+
+  _move(i, dir) {
+    const nodes = [...this._config.nodes];
+    const j = i + dir;
+    if (j < 1 || j >= nodes.length) return;
+    [nodes[i], nodes[j]] = [nodes[j], nodes[i]];
+    this._open = nodes[j].id;
+    this._config = { ...this._config, nodes };
+    this._build();
+    this._emit();
+  }
+
+  _add(parent) {
+    const nodes = [...this._config.nodes];
+    let k = nodes.length + 1;
+    while (nodes.some((n) => n.id === "node_" + k)) k++;
+    const node = parent ? { id: "node_" + k, parent, name: "New node", icon: "mdi:lan" } : { id: "internet", name: "Internet", icon: "mdi:web" };
+    nodes.push(node);
+    this._open = node.id;
+    this._config = { ...this._config, nodes };
+    this._build();
+    this._emit();
+  }
+
+  _remove(i) {
+    const nodes = this._config.nodes.map((n) => ({ ...n }));
+    const gone = nodes[i];
+    nodes.splice(i, 1);
+    for (const n of nodes) if (n.parent === gone.id) n.parent = gone.parent;  // children move up
+    this._config = { ...this._config, nodes };
+    this._build();
+    this._emit();
+  }
+}
+
 if (!customElements.get(NAME)) {
   customElements.define(NAME, LanFlowCard);
+  customElements.define(NAME + "-editor", LanFlowCardEditor);
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: NAME,
     name: NAME === "lan-flow-card" ? "LAN flow card" : "LAN flow card (" + NAME + ")",
     description: "The network as a tree, cables with moving dots for live traffic.",
+    preview: true,
   });
 }

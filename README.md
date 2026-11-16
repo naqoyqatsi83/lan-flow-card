@@ -22,6 +22,7 @@ No dependencies, one JavaScript file.
 - **History panel** on tap: down and up (and signal for clients) over 1 h, 6 h, 24 h from the recorder, 7 and 30
   days from long-term statistics.
 - **Phone friendly**: narrow cards switch to a compact layout.
+- **Visual editor**: card options and every node in HA's card editor, with entity and icon pickers; YAML still works.
 
 | Wi-Fi clients found automatically | radial view | history panel |
 |---|---|---|
@@ -115,10 +116,14 @@ folder over HTTP (`python3 -m http.server`) and open `http://localhost:8000/demo
 To try changes in your own Home Assistant next to the released card (no second instance), see
 [dev/README.md](dev/README.md).
 
+## tests
+
+`tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
+with a stand-in for HA's form: serve the repo over HTTP and open it; every line should say PASS.
+
 ## roadmap
 
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
-- Visual editor.
 
 ## license
 

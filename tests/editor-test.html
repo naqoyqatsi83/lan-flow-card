@@ -1,0 +1,44 @@
+<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>
+<script>
+// stand-in for HA's ha-form: keeps schema/data, lets the test "type" into it
+customElements.define("ha-form", class extends HTMLElement { type(v) { this.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...this.data, ...v } } })); } });
+customElements.define("ha-entity-picker", class extends HTMLElement {});
+</script>
+<script type="module">
+import "../lan-flow-card.js";  // run: python3 -m http.server in the repo, open /tests/editor-test.html
+const log = [];
+const ok = (cond, what) => log.push((cond ? "PASS " : "FAIL ") + what);
+const Card = customElements.get("lan-flow-card");
+const ed = Card.getConfigElement();
+let last = null;
+ed.addEventListener("config-changed", (e) => { last = e.detail.config; ed.setConfig(last); });
+document.body.appendChild(ed);
+ed.setConfig({ title: "Net", custom_key: 1, nodes: [
+  { id: "internet", name: "Internet" }, { id: "router", parent: "internet", name: "Router" },
+  { id: "sw", parent: "router", name: "Switch" }, { id: "nas", parent: "sw", name: "NAS" }] });
+await new Promise((r) => setTimeout(r, 300));
+const forms = () => [...ed.shadowRoot.querySelectorAll("ha-form")];
+ok(forms().length === 5, "one card form + 4 node forms");
+const parentOpts = (i) => forms()[i + 1].schema.find((s) => s.name === "parent").selector.select.options.map((o) => o.value);
+ok(JSON.stringify(parentOpts(2)) === '["internet","router"]', "switch can't hang below itself or its child: " + parentOpts(2));
+forms()[3].type({ id: "switch" });
+ok(last.nodes[2].id === "switch" && last.nodes[3].parent === "switch", "rename moves the child along");
+forms()[2].type({ id: "internet" });
+ok(last.nodes[1].id === "router", "a taken ID is not applied");
+forms()[4].type({ down: "sensor.x", note: "", clients: { prefix: "", exclude: [] } });
+ok(last.nodes[3].down === "sensor.x" && !("note" in last.nodes[3]) && !("clients" in last.nodes[3]), "empty fields dropped");
+ok(last.custom_key === 1 && last.title === "Net", "unknown card keys kept");
+forms()[0].type({ busy_mbit: 3 });
+ok(last.busy_mbit === 3 && last.nodes.length === 4, "card option set, nodes kept");
+const buttons = (label) => [...ed.shadowRoot.querySelectorAll("button")].filter((b) => b.textContent === label);
+buttons("Remove")[2].click();   // remove "switch" (index 2)
+ok(last.nodes.length === 3 && last.nodes.find((n) => n.id === "nas").parent === "router", "remove: child moves up to the parent");
+buttons("Add child")[1].click(); // below router
+ok(last.nodes.length === 4 && last.nodes[3].parent === "router", "add child");
+buttons("Move up")[3].click();
+ok(last.nodes[2].parent === "router" && last.nodes[2].name === "New node", "move up");
+ok(buttons("Remove")[0].disabled && buttons("Move up")[1].disabled, "root can't be removed, nothing moves above it");
+const stub = Card.getStubConfig();
+ok(stub.nodes.length === 2 && stub.nodes[1].parent === "internet", "stub config");
+document.getElementById("out").textContent = log.join("\n");
+</script>
