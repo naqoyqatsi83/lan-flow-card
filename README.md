@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/HACS-custom-41BDF5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white" alt="HACS custom">
+  <img src="https://img.shields.io/badge/Home%20Assistant-card-18BCF2?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Home Assistant card">
+  <img src="https://img.shields.io/badge/JavaScript-no%20dependencies-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="JavaScript, no dependencies">
+  <img src="https://img.shields.io/badge/router-AmpliFi-0559C9?style=for-the-badge&logo=ubiquiti&logoColor=white" alt="AmpliFi">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+</p>
+
 # LAN Flow Card
 
 A Home Assistant dashboard card that draws your network as a tree, with moving dots on every cable for its live
@@ -119,6 +127,9 @@ To try changes in your own Home Assistant next to the released card (no second i
 
 ## tests
 
+`bash tests/run.sh` runs all automated checks (syntax, ASCII, both browser tests in headless Chromium; set
+`CHROME=` to the browser if it isn't on the path). CI runs it on every push and pull request.
+
 `tests/panel-keep-test.html` checks that an open panel survives the card rebuilding (a device joins or leaves).
 `tests/panel-test.html` opens a client's history panel in the demo, drags it, hovers the chart and unfolds "all
 fields" (look at the result). `tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
@@ -127,6 +138,12 @@ with a stand-in for HA's form: serve the repo over HTTP and open it; every line 
 ## roadmap
 
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
+
+## contributing
+
+Bugs and ideas go to the [issues](https://github.com/naqoyqatsi83/lan-flow-card/issues/new/choose); see
+[CONTRIBUTING.md](CONTRIBUTING.md) for pull requests and [SECURITY.md](SECURITY.md) for vulnerabilities. Changes
+are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## license
 
