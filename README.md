@@ -6,6 +6,8 @@ be found automatically, and a tap on any node opens its traffic history.
 
 No dependencies, one JavaScript file.
 
+![A wired network as a tree, with live traffic on every cable](docs/tree.gif)
+
 > Status: early. It grew out of one home network (Netgear switches, an EdgeRouter, an AmpliFi mesh). Automatic
 > client discovery currently understands the AmpliFi integration only; other routers are planned (see *roadmap*).
 
@@ -20,6 +22,12 @@ No dependencies, one JavaScript file.
 - **History panel** on tap: down and up (and signal for clients) over 1 h, 6 h, 24 h from the recorder, 7 and 30
   days from long-term statistics.
 - **Phone friendly**: narrow cards switch to a compact layout.
+
+| Wi-Fi clients found automatically | radial view | history panel |
+|---|---|---|
+| ![clients](docs/clients.gif) | ![radial](docs/radial.gif) | ![panel](docs/panel.gif) |
+
+All pictures come from the demo page with made-up devices (see *demo*).
 
 ## install
 
@@ -95,11 +103,17 @@ per-device sensors made by [examples/amplifi-client-sensors-automation.yaml](exa
 - [examples/network-tree.yaml](examples/network-tree.yaml): a wired network.
 - [examples/amplifi-clients.yaml](examples/amplifi-clients.yaml): an AmpliFi with its Wi-Fi clients.
 
+## demo
+
+`demo/index.html` runs the card outside Home Assistant, with made-up devices, traffic and history. Serve the repo
+folder over HTTP (`python3 -m http.server`) and open `http://localhost:8000/demo/?cfg=network` (or `cfg=wifi`,
+`cfg=radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
+`docs/` from it.
+
 ## roadmap
 
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
 - Visual editor.
-- Screenshots in this README.
 
 ## license
 

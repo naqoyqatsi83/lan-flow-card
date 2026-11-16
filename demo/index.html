@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAN Flow Card demo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+<!--
+  The card outside Home Assistant, with made-up devices and traffic. Serve the repo folder over HTTP and open
+  demo/index.html (e.g. `python3 -m http.server` in the repo, then http://localhost:8000/demo/).
+  Parameters:
+    cfg=network | wifi | radial   which example (default network)
+    w=<px>                        card width (default 900)
+    panel=<n>                     open the history panel of the n-th tappable node
+    t=<ms>                        freeze every animation at this time (for screenshots and GIFs)
+    light=1                       light theme
+-->
+<style>
+  :root {
+    --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9e9e9e;
+    --divider-color: #3a3a3a; --primary-color: #03a9f4; --page: #111;
+  }
+  :root.light {
+    --card-background-color: #fff; --primary-text-color: #212121; --secondary-text-color: #727272;
+    --divider-color: #e0e0e0; --page: #f5f5f5;
+  }
+  body { margin: 0; padding: 12px; background: var(--page); font-family: Roboto, "Segoe UI", sans-serif; }
+</style>
+</head>
+<body>
+<div id="box"></div>
+<script>
+  // Stand-ins for Home Assistant's elements: ha-card, and ha-icon from the MDI webfont (its @font-face is loaded in
+  // the page head; the class styles again inside each icon's shadow root).
+  const MDI = "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css";
+  // ha-card styles itself (its own shadow root), as in HA: page CSS can't reach it inside the card.
+  customElements.define("ha-card", class extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).innerHTML = `<style>:host { display: block; position: relative;
+        background: var(--card-background-color); border-radius: 12px; border: 1px solid var(--divider-color);
+        color: var(--primary-text-color); font-family: Roboto, "Segoe UI", sans-serif; }</style><slot></slot>`;
+    }
+  });
+  customElements.define("ha-icon", class extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    connectedCallback() { this.render(); }
+    attributeChangedCallback() { this.render(); }
+    render() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      const name = (this.getAttribute("icon") || "mdi:help").replace("mdi:", "");
+      this.shadowRoot.innerHTML = `<link rel="stylesheet" href="${MDI}">
+        <style>:host { display: inline-flex; } i { font-size: var(--mdc-icon-size, 24px); line-height: 1; }</style>
+        <i class="mdi mdi-${name}"></i>`;
+    }
+  });
+</script>
+<script type="module">
+import "../lan-flow-card.js";
+
+const q = new URLSearchParams(location.search);
+if (q.get("light")) document.documentElement.classList.add("light");
+const states = {};
+const rate = (id, v, unit = "Mbit/s") => { states[id] = { state: String(v), attributes: { unit_of_measurement: unit } }; };
+const link = (id, v) => { states[id] = { state: v, attributes: {} }; };
+
+// A wired home network: internet, router, a switch with three devices, an access point.
+rate("sensor.wan_down", 48.2); rate("sensor.wan_up", 3.1);
+rate("sensor.router_lan1_down", 41.5); rate("sensor.router_lan1_up", 2.6);
+rate("sensor.switch_nas_down", 0.8); rate("sensor.switch_nas_up", 36.9);
+rate("sensor.switch_desktop_down", 38.4); rate("sensor.switch_desktop_up", 1.9);
+rate("sensor.switch_tv_down", 0); rate("sensor.switch_tv_up", 0); link("sensor.switch_tv_link", "down");
+rate("sensor.router_lan2_down", 6.7); rate("sensor.router_lan2_up", 0.5);
+rate("sensor.ping_ms", 7.4, "ms");
+
+// Wi-Fi clients as the AmpliFi integration reports them: IP, signal, bytes of the last 15 s.
+const clients = [
+  ["laptop", "Laptop", "192.168.1.21", 82, 9000000, 400000], ["phone_anna", "Anna's phone", "192.168.1.23", 64, 380000, 52000],
+  ["phone_tom", "Tom's phone", "192.168.1.24", 71, 0, 1800], ["tablet", "Tablet", "192.168.1.30", 58, 0, 0],
+  ["tv_stick", "TV stick", "192.168.1.35", 77, 4200000, 30000],
+  ["plug_kitchen", "Kitchen plug", "192.168.20.11", 88, 900, 1500], ["plug_desk", "Desk plug", "192.168.20.12", 69, 0, 1200],
+  ["thermostat", "Thermostat", "192.168.20.15", 74, 1600, 2400], ["vacuum", "Vacuum", "192.168.20.18", 61, 0, 0],
+  ["camera_door", "Door camera", "192.168.20.21", 66, 2000, 260000], ["bulb_hall", "Hall light", "192.168.20.25", 92, 0, 300],
+  ["air_purifier", "Air purifier", "192.168.20.27", 79, 0, 900],
+  ["weather", "Weather station", "192.168.30.5", 55, 0, 700], ["printer", "Printer", "192.168.30.9", 72, 0, 0],
+  ["gateway", "Zigbee gateway", "192.168.30.12", 84, 1300, 2100],
+];
+for (const [key, name, ip, q2, rx, tx] of clients) {
+  const a = { friendly_name: name, Address: ip, SignalQuality: q2, RxBitrate: [72000, 144000, 433000][q2 % 3], Mode: "802.11ac" };
+  if (rx) a.RxBytes_15sec = rx;
+  if (tx) a.TxBytes_15sec = tx;
+  states["device_tracker.amplifi_" + key] = { state: "home", attributes: a };
+}
+rate("sensor.wifi_main_down", 7.4); rate("sensor.wifi_main_up", 0.3);
+rate("sensor.wifi_iot_down", 0.01); rate("sensor.wifi_iot_up", 0.14);
+rate("sensor.wifi_2g_down", 0.001); rate("sensor.wifi_2g_up", 0.002);
+
+// The per-device sensors of examples/amplifi-client-sensors-automation.yaml, for the history panel.
+const devices = {}, entities = {};
+for (const [key] of clients) {
+  devices["d_" + key] = { id: "d_" + key, identifiers: [["mqtt", "amplifi_client_" + key]] };
+  for (const k of ["down", "up", "signal"]) {
+    const id = "sensor.wi_fi_" + key + "_" + k;
+    entities[id] = { entity_id: id, device_id: "d_" + key };
+    states[id] = { state: "0", attributes: { unit_of_measurement: k === "signal" ? "%" : "kbit/s" } };
+  }
+}
+
+// Made-up history: a daily rhythm with evening peaks, plus noise. Same answer for the same entity.
+function seeded(s) { let x = 0; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return () => ((x = (x * 1103515245 + 12345) >>> 0) / 2 ** 32); }
+async function callWS(msg) {
+  const out = {};
+  const t0 = Date.parse(msg.start_time), t1 = Date.parse(msg.end_time);
+  const ids = msg.entity_ids || msg.statistic_ids;
+  for (const id of ids) {
+    const rnd = seeded(id);
+    const scale = id.includes("signal") ? 0 : id.endsWith("_up") || id.includes("_up") ? 0.15 : 1;
+    const base = id.startsWith("sensor.wi_fi_") ? 900 : 20; // kbit/s for clients, Mbit/s for cables
+    const value = (t) => {
+      if (id.includes("signal")) return 70 + 8 * Math.sin(t / 7e6) + 4 * rnd();
+      const h = new Date(t).getHours() + new Date(t).getMinutes() / 60;
+      const day = Math.max(0, Math.sin(((h - 7) / 24) * 2 * Math.PI)) + (h > 19 && h < 23 ? 1.2 : 0);
+      return base * scale * (0.05 + day) * (0.4 + rnd() * 1.2) * (rnd() > 0.97 ? 4 : 1);
+    };
+    if (msg.type === "recorder/statistics_during_period") {
+      const rows = [];
+      for (let t = t0 - (t0 % 3600e3); t < t1; t += 3600e3) { const m = value(t); rows.push({ start: t, mean: m, max: m * (1.5 + rnd()) }); }
+      out[id] = rows;
+    } else {
+      const step = Math.max(10e3, (t1 - t0) / 2000);
+      const rows = [];
+      for (let t = t0; t < t1; t += step) rows.push({ s: value(t).toFixed(2), lu: t / 1000 });
+      out[id] = rows;
+    }
+  }
+  return out;
+}
+
+const configs = {
+  network: {
+    title: "Network", latency: "sensor.ping_ms", busy_mbit: 20,
+    nodes: [
+      { id: "internet", name: "Internet", icon: "mdi:web", color: "#66bb6a" },
+      { id: "router", parent: "internet", name: "Router", icon: "mdi:router-network", color: "#ffca28", down: "sensor.wan_down", up: "sensor.wan_up" },
+      { id: "switch", parent: "router", name: "Office switch", icon: "mdi:switch", color: "#ffca28", down: "sensor.router_lan1_down", up: "sensor.router_lan1_up" },
+      { id: "nas", parent: "switch", name: "NAS", note: "backup running", icon: "mdi:nas", color: "#7e57c2", down: "sensor.switch_nas_down", up: "sensor.switch_nas_up" },
+      { id: "desktop", parent: "switch", name: "Desktop", icon: "mdi:desktop-tower-monitor", color: "#26c6da", down: "sensor.switch_desktop_down", up: "sensor.switch_desktop_up" },
+      { id: "tv", parent: "switch", name: "TV", icon: "mdi:television", color: "#ab47bc", down: "sensor.switch_tv_down", up: "sensor.switch_tv_up", link: "sensor.switch_tv_link" },
+      { id: "ap", parent: "router", name: "Wi-Fi", icon: "mdi:wifi", color: "#29b6f6", down: "sensor.router_lan2_down", up: "sensor.router_lan2_up" },
+    ],
+  },
+  wifi: {
+    title: "Access point", down: "sensor.router_lan2_down", up: "sensor.router_lan2_up", idle_mbit: 0.002,
+    nodes: [
+      { id: "ap", name: "Access point", note: "living room", icon: "mdi:wifi", color: "#29b6f6" },
+      { id: "main", parent: "ap", name: "Wi-Fi", icon: "mdi:cellphone-wireless", color: "#29b6f6", down: "sensor.wifi_main_down", up: "sensor.wifi_main_up", clients: { prefix: "192.168.1.", icon: "mdi:cellphone" } },
+      { id: "iot", parent: "ap", name: "IoT", icon: "mdi:home-automation", color: "#8bc34a", down: "sensor.wifi_iot_down", up: "sensor.wifi_iot_up", clients: { prefix: "192.168.20.", icon: "mdi:chip" } },
+      { id: "iot2g", parent: "ap", name: "IoT 2.4 GHz", icon: "mdi:home-automation", color: "#ffca28", down: "sensor.wifi_2g_down", up: "sensor.wifi_2g_up", clients: { prefix: "192.168.30.", icon: "mdi:chip" } },
+    ],
+  },
+};
+configs.radial = { ...configs.wifi, layout: "radial" };
+
+const box = document.getElementById("box");
+box.style.width = (+q.get("w") || 900) + "px";
+const card = document.createElement("lan-flow-card");
+card.setConfig(configs[q.get("cfg") || "network"]);
+box.appendChild(card);
+card.hass = { states, devices, entities, callWS };
+
+// Optional: open a panel, then freeze every animation at time t (ms) so a screenshot is one exact frame.
+setTimeout(() => {
+  const n = q.get("panel");
+  if (n !== null) {
+    const el = [...card.shadowRoot.querySelectorAll(".node, .dev")].filter((e) => e.style.cursor === "pointer" || e.classList.contains("dev"))[+n];
+    if (el) el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+  const t = q.get("t");
+  if (t !== null) {
+    setTimeout(() => {
+      for (const a of card.shadowRoot.getAnimations()) { a.pause(); a.currentTime = +t; }
+      document.title = "frozen";
+    }, 300);
+  }
+}, 400);
+</script>
+</body>
+</html>
