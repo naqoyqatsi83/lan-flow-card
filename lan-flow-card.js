@@ -39,6 +39,9 @@ const CLIENT_R = 12;    // client node radius (compact: 10)
 const DOWN = "\u2193";  // arrows as escapes, so the file stays ASCII
 const UP = "\u2191";
 const SVG = "http://www.w3.org/2000/svg";
+// The element name comes from this file's URL (`?name=lan-flow-card-dev`), so a development copy can run next to
+// the released card in the same Home Assistant. See dev/README.md.
+const NAME = new URL(import.meta.url).searchParams.get("name") || "lan-flow-card";
 
 function mbit(hass, entityId) {
   const st = entityId && hass.states[entityId];
@@ -885,10 +888,12 @@ class LanFlowCard extends HTMLElement {
   }
 }
 
-customElements.define("lan-flow-card", LanFlowCard);
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "lan-flow-card",
-  name: "LAN flow card",
-  description: "The network as a tree, cables with moving dots for live traffic.",
-});
+if (!customElements.get(NAME)) {
+  customElements.define(NAME, LanFlowCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: NAME,
+    name: NAME === "lan-flow-card" ? "LAN flow card" : "LAN flow card (" + NAME + ")",
+    description: "The network as a tree, cables with moving dots for live traffic.",
+  });
+}

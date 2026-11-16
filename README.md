@@ -110,6 +110,11 @@ folder over HTTP (`python3 -m http.server`) and open `http://localhost:8000/demo
 `cfg=radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
 `docs/` from it.
 
+## development
+
+To try changes in your own Home Assistant next to the released card (no second instance), see
+[dev/README.md](dev/README.md).
+
 ## roadmap
 
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
