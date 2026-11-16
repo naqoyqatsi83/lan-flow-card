@@ -160,6 +160,7 @@ const configs = {
   },
 };
 configs.radial = { ...configs.wifi, layout: "radial" };
+configs["network-radial"] = { ...configs.network, layout: "radial" };  // shows why radial is not possible
 
 const box = document.getElementById("box");
 box.style.width = (+q.get("w") || 900) + "px";

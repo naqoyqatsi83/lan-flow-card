@@ -249,6 +249,10 @@ class LanFlowCard extends HTMLElement {
     const compact = this._compact;
     const cr = compact ? CLIENT_R - 2 : CLIENT_R;
     const radial = this._config.layout === "radial" && !compact && this._nodes.some((n) => n._client);
+    // radial asked for but not possible: say why in the header instead of silently drawing the tree
+    const radialWhy = this._config.layout !== "radial" || radial ? ""
+      : !this._config.nodes.some((n) => n.clients) ? "radial view needs a node that finds its clients"
+      : compact ? "radial view needs a wider card" : "radial view: no clients found yet";
     const pos = radial ? null : this._layout(width);
     const geo = radial ? this._radialLayout(width) : null;
     const height = radial ? geo.height : Math.max(...Object.values(pos).map((p) => p.y)) + r + (compact ? 58 : 64);
@@ -339,6 +343,12 @@ class LanFlowCard extends HTMLElement {
     const head = document.createElement("div");
     head.className = "head";
     head.innerHTML = `<span class="title"></span><span class="stat" id="inet"></span><span class="stat" id="lat"></span>`;
+    if (radialWhy) {
+      const why = document.createElement("span");
+      why.className = "stat";
+      why.textContent = "(" + radialWhy + ")";
+      head.appendChild(why);
+    }
     head.querySelector(".title").textContent = this._config.title || "";
     card.appendChild(head);
 
@@ -1022,7 +1032,12 @@ class LanFlowCardEditor extends HTMLElement {
     f.schema = schema;
     f.data = data;
     f.computeLabel = (s) => LABELS[s.name] || s.title || s.name;
-    f.computeHelper = (s) => HELPERS[s.name];
+    f.computeHelper = (s) => {
+      if (s.name === "layout" && !(this._config.nodes || []).some((n) => n.clients)) {
+        return "Radial arranges the clients that nodes find by themselves; this card has none, so it stays a tree";
+      }
+      return HELPERS[s.name];
+    };
     f.addEventListener("value-changed", (ev) => { ev.stopPropagation(); onChange(ev.detail.value); });
     this._forms.push(f);
     return f;
