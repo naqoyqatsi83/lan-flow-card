@@ -29,7 +29,7 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
 - Values are converted to Mbit/s from each sensor's unit (`UNIT_TO_MBIT`); client sensors are kbit/s.
 - The visual editor uses HA's lazy-loaded `ha-form` (loaded via `loadCardHelpers` and the entities card editor);
   it must keep unknown config keys and drop empty fields.
-- Files stay ASCII (arrows as `↓`/`↑` escapes).
+- Files stay ASCII (arrows written as the JavaScript escapes `\u2193` and `\u2191`).
 
 ## testing
 
