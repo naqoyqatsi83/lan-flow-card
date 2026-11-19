@@ -29,7 +29,9 @@ No dependencies, one JavaScript file.
   stronger the signal the closer.
 - **History panel** on tap: down and up (and signal for clients) over 1 h, 6 h, 24 h from the recorder, 7 and 30
   days from long-term statistics. Hover (or touch) the chart for the values at that time; drag the panel by its
-  title; "all fields" lists everything the router reports for a client.
+  title; "all fields" lists everything the router reports for a client, and for any other node its sensors with their
+  values, the attributes of `entity` and the rest of their device (e.g. all ports of a switch); a tap on a name
+  opens its Home Assistant dialog.
 - **Phone friendly**: narrow cards switch to a compact layout.
 - **Visual editor**: card options and every node in HA's card editor, with entity and icon pickers; YAML still works.
 
@@ -90,7 +92,7 @@ nodes:
 | `name`, `icon`, `color` | label, `mdi:` icon, color of the circle and its dots |
 | `down`, `up` | rate sensors of the cable from the parent: down = towards this node |
 | `link` | sensor whose state `down` dims the node |
-| `entity` | opened by the panel's *details* button (or by a tap when the node has no rate sensors) |
+| `entity` | its attributes are listed in the panel's *all fields* (a tap on the node opens it when the node has no rate sensors) |
 | `note` | fixed text under the name |
 | `note_entity`, `note_attribute` | live text under the name, from an entity's state or attribute |
 | `clients` | find this node's children automatically, see below |

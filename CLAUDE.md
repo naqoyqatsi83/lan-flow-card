@@ -14,7 +14,7 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
 | `demo/index.html` | the card outside HA with made-up devices, traffic and history (`?cfg=network|wifi|radial|network-radial`, `w=`, `panel=`, `t=`, `light=1`) |
 | `demo/make-gifs.sh` | rebuilds `docs/*.gif` from the demo (headless Chromium, ImageMagick, ffmpeg) |
 | `dev/` | loader and docs for running a development copy next to the release in the same HA |
-| `tests/` | `run.sh` (all automated checks), browser tests: `editor-test.html` (12 checks), `panel-keep-test.html` (5 checks), `panel-test.html` (look at a screenshot) |
+| `tests/` | `run.sh` (all automated checks), browser tests: `editor-test.html` (12 checks), `panel-keep-test.html` (5 checks), `fields-test.html` (9 checks), `panel-test.html` (look at a screenshot) |
 | `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` | release notes, rules for contributors, private vulnerability reports |
 | `.github/` | CI workflow (runs `tests/run.sh`), issue templates (bug, idea), pull request template |
 

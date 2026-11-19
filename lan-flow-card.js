@@ -289,8 +289,11 @@ class LanFlowCard extends HTMLElement {
       .panel .fields { display: none; max-height: 160px; overflow: auto; margin: 4px 0; font-size: 12px;
                        border: 1px solid var(--divider-color, #444); border-radius: 6px; padding: 4px 8px; }
       .panel .fields.open { display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
-      .panel .fields span:nth-child(odd) { color: var(--primary-text-color); }
-      .panel .fields span:nth-child(even) { overflow-wrap: anywhere; }
+      .panel .fields .k { color: var(--primary-text-color); }
+      .panel .fields .v { overflow-wrap: anywhere; }
+      .panel .fields .group { grid-column: 1 / -1; color: var(--secondary-text-color); font-weight: 500;
+                             margin-top: 4px; border-top: 1px solid var(--divider-color, #444); padding-top: 3px; }
+      .panel .fields .link { cursor: pointer; text-decoration: underline dotted; }
       .panel .hover { position: absolute; top: 0; pointer-events: none; display: none; white-space: nowrap;
                       background: var(--card-background-color, #1c1c1c); border: 1px solid var(--divider-color, #444);
                       border-radius: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 17px; z-index: 2;
@@ -418,7 +421,7 @@ class LanFlowCard extends HTMLElement {
       icon.setAttribute("icon", n.icon || "mdi:lan");
       circle.appendChild(icon);
       if (n.down || n.up) {
-        // the history panel of this node's cable; its `details` button opens n.entity
+        // the history panel of this node's cable; "all fields" there lists n.entity and the rest of its device
         circle.style.cursor = "pointer";
         circle.addEventListener("click", () => this._openPanel(n, p));
       } else if (n.entity) {
@@ -640,6 +643,62 @@ class LanFlowCard extends HTMLElement {
     this.dispatchEvent(ev);
   }
 
+  // A tracker's attributes as rows for "all fields".
+  _trackerFields(id) {
+    const st = this._hass.states[id];
+    return Object.entries(st ? st.attributes : {}).sort(([a], [b]) => a.localeCompare(b))
+      .filter(([k]) => !["friendly_name", "icon", "entity_picture"].includes(k))
+      .map(([k, v]) => ({ key: k, value: typeof v === "object" ? JSON.stringify(v) : String(v) }));
+  }
+
+  // A configured node's rows for "all fields": its own entities with their values, the attributes of `entity`,
+  // then the other entities of their devices (a switch port node shows the whole switch), each device under its name.
+  _nodeFields(n) {
+    const hass = this._hass;
+    const val = (id) => {
+      const st = hass.states[id];
+      if (!st) return "-";
+      const u = st.attributes.unit_of_measurement;
+      return u ? st.state + " " + u : st.state;
+    };
+    const label = (id) => (hass.states[id] && hass.states[id].attributes.friendly_name) || id;
+    const rows = [];
+    const seen = new Set();
+    for (const k of ["down", "up", "link", "note_entity", "entity"]) {
+      const id = n[k];
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      rows.push({ key: k.replace("_entity", "") + ": " + label(id), value: val(id), entity: id });
+    }
+    const st = n.entity && hass.states[n.entity];
+    if (st) {
+      const skip = ["friendly_name", "icon", "entity_picture", "unit_of_measurement", "device_class", "state_class"];
+      for (const [k, v] of Object.entries(st.attributes).sort(([a], [b]) => a.localeCompare(b))) {
+        if (!skip.includes(k)) rows.push({ key: k, value: typeof v === "object" ? JSON.stringify(v) : String(v) });
+      }
+    }
+    const reg = hass.entities || {};
+    const devs = [...new Set([...seen].map((id) => reg[id] && reg[id].device_id).filter((d) => d))];
+    for (const d of devs) {
+      const dev = (hass.devices || {})[d] || {};
+      const name = dev.name_by_user || dev.name || "";
+      const other = Object.values(reg).filter((e) => e.device_id === d && !seen.has(e.entity_id) && !e.hidden &&
+        hass.states[e.entity_id]).map((e) => e.entity_id);
+      if (!other.length) continue;
+      rows.push({ head: name || "same device" });
+      const short = (id) => {
+        const l = label(id);
+        return name && l.startsWith(name + " ") ? l.slice(name.length + 1) : l;
+      };
+      other.sort((a, b) => short(a).localeCompare(short(b), undefined, { numeric: true }));
+      for (const id of other) {
+        seen.add(id);
+        rows.push({ key: short(id), value: val(id), entity: id });
+      }
+    }
+    return rows;
+  }
+
   // History panel: down above the axis, up below it, signal underneath (clients). A client's data comes from its
   // sensors (automation "AmpliFi client sensors"), any other node's from its down / up sensors.
   _openPanel(n, p) {
@@ -699,34 +758,41 @@ class LanFlowCard extends HTMLElement {
       });
       ranges.appendChild(b);
     }
-    if (n._client) {
-      // the tracker's raw fields right here (HA's own dialog would only show home / away)
+    // "all fields": everything known about the node right here (HA's own dialog would show one entity only)
+    const fieldRows = n._client ? () => this._trackerFields(n._client) : () => this._nodeFields(n);
+    if (n._client || fieldRows().length) {
       const more = document.createElement("button");
       more.className = "more";
       more.textContent = "all fields";
-      more.title = "everything the router reports for this device";
+      more.title = n._client ? "everything the router reports for this device"
+        : "this node's sensors and the rest of their device";
       const box = panel.querySelector(".fields");
       more.addEventListener("click", () => {
-        const st = this._hass.states[n._client];
         box.innerHTML = "";
-        for (const [k, v] of Object.entries(st ? st.attributes : {}).sort(([a], [b]) => a.localeCompare(b))) {
-          if (["friendly_name", "icon", "entity_picture"].includes(k)) continue;
+        for (const r of fieldRows()) {
           const key = document.createElement("span");
-          key.textContent = k;
           const val = document.createElement("span");
-          val.textContent = typeof v === "object" ? JSON.stringify(v) : String(v);
+          if (r.head) {
+            key.className = "group";
+            key.textContent = r.head;
+            box.append(key);
+            continue;
+          }
+          key.className = "k";
+          val.className = "v";
+          key.textContent = r.key;
+          val.textContent = r.value;
+          if (r.entity) {
+            // a tap on an entity opens HA's dialog for it (its own history, settings)
+            key.classList.add("link");
+            key.title = r.entity;
+            key.addEventListener("click", () => this._more(r.entity));
+          }
           box.append(key, val);
         }
         box.classList.toggle("open");
         more.classList.toggle("on", box.classList.contains("open"));
       });
-      ranges.appendChild(more);
-    } else if (n.entity) {
-      const more = document.createElement("button");
-      more.className = "more";
-      more.textContent = "details";
-      more.title = n.entity;
-      more.addEventListener("click", () => this._more(n.entity));
       ranges.appendChild(more);
     }
     const chart = panel.querySelector(".chart");
@@ -1056,13 +1122,13 @@ const LABELS = {
   title: "Title", layout: "Layout", down: "Down sensor (towards it)", up: "Up sensor (away from it)",
   latency: "Ping sensor (ms)", busy_mbit: "Glow from (Mbit/s)", idle_mbit: "Dots from (Mbit/s)",
   id: "ID", name: "Name", parent: "Parent", icon: "Icon", color: "Color (#rrggbb)", link: "Link sensor",
-  entity: "Details entity", note: "Note (fixed text)", note_entity: "Note from entity", note_attribute: "Attribute",
+  entity: "Main entity", note: "Note (fixed text)", note_entity: "Note from entity", note_attribute: "Attribute",
   clients: "Find clients automatically (AmpliFi trackers)", prefix: "IP prefix, e.g. 192.168.1.",
   exclude: "Leave out",
 };
 const HELPERS = {
   down: "Traffic from the parent to this node", up: "Traffic from this node to the parent",
-  link: "A state of \"down\" dims the node", entity: "Opened by \"details\" in the history panel",
+  link: "A state of \"down\" dims the node", entity: "Its attributes are in \"all fields\" of the history panel",
   layout: "Radial needs nodes that find their clients", idle_mbit: "Below this a cable has no dots",
 };
 const sensor = { entity: { domain: "sensor" } };
