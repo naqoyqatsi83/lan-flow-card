@@ -22,7 +22,7 @@ srv=$!
 trap 'kill $srv 2>/dev/null' EXIT
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 0.1; done
 
-for t in editor-test panel-keep-test fields-test; do
+for t in editor-test panel-keep-test fields-test unifi-test; do
   out=$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=6000 \
     --dump-dom "http://127.0.0.1:$PORT/tests/$t.html" 2>/dev/null \
     | sed -n '/<pre id="out">/,/<\/pre>/p' | sed 's/.*<pre id="out">//; s/<[^>]*>//g' | grep -E '^(PASS|FAIL)')

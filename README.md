@@ -23,7 +23,7 @@ No dependencies, one JavaScript file.
 
 - **Tree of any depth** built from your own rate sensors: switch ports, router interfaces, a Pi's network
   interfaces, anything with a data rate. Units are converted (bit/s to GB/s, kB/s, KiB/s, ...).
-- **Clients found automatically** under a node with `clients:` (AmpliFi trackers), one per line off a trunk, with
+- **Clients found automatically** under a node with `clients:` (AmpliFi or UniFi Network trackers), one per line off a trunk, with
   rates and Wi-Fi signal; new devices appear by themselves.
 - **Radial view** (`layout: radial`): the access point in the middle, devices around it in a sector per network, the
   stronger the signal the closer.
@@ -97,29 +97,41 @@ nodes:
 | `note_entity`, `note_attribute` | live text under the name, from an entity's state or attribute |
 | `clients` | find this node's children automatically, see below |
 
-### clients (AmpliFi)
+### clients
 
 ```yaml
 clients:
+  source: unifi          # amplifi or unifi; leave out for any that is found
   prefix: 192.168.1.     # devices whose IP starts with this
   icon: mdi:cellphone
-  exclude: [device_tracker.amplifi_some_device]
+  exclude: [device_tracker.some_device]
+  ssid: Office           # UniFi: only this Wi-Fi network (or a list)
+  ap: "aa:bb:cc:dd:ee:ff" # UniFi: only the clients of this access point (or a list)
+  connection: wifi       # UniFi: wifi or wired; leave out for both
 ```
 
-Every `device_tracker` that is `home`, has `SignalQuality` and an IP (`Address`) starting with `prefix` becomes a
-child. Rates come from `RxBytes_15sec` / `TxBytes_15sec` (bytes of the last 15 s). The history panel reads the
-per-device sensors made by [examples/amplifi-client-sensors-automation.yaml](examples/amplifi-client-sensors-automation.yaml).
+Every `device_tracker` that is `home`, comes from a supported integration and has an IP starting with `prefix`
+becomes a child.
+
+- **AmpliFi** (trackers with `SignalQuality`): rates come from `RxBytes_15sec` / `TxBytes_15sec` (bytes of the last
+  15 s), with the signal next to each client. The history panel reads the per-device sensors made by
+  [examples/amplifi-client-sensors-automation.yaml](examples/amplifi-client-sensors-automation.yaml).
+- **UniFi Network** (the official integration): rates and history come from each client's RX / TX sensors; turn on
+  "Bandwidth usage sensors for network clients" in the integration's options (and "Include wired network clients"
+  for wired ones). UniFi reports no signal strength, so there is none next to the clients and the radial view puts
+  them all at the same distance. UniFi counts from the access point's side: TX is towards the device.
 
 ## examples
 
 - [examples/network-tree.yaml](examples/network-tree.yaml): a wired network.
 - [examples/amplifi-clients.yaml](examples/amplifi-clients.yaml): an AmpliFi with its Wi-Fi clients.
+- [examples/unifi-clients.yaml](examples/unifi-clients.yaml): UniFi Wi-Fi and wired clients.
 
 ## demo
 
 `demo/index.html` runs the card outside Home Assistant, with made-up devices, traffic and history. Serve the repo
 folder over HTTP (`python3 -m http.server`) and open `http://localhost:8000/demo/?cfg=network` (or `cfg=wifi`,
-`cfg=radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
+`cfg=radial`, `cfg=unifi`, `cfg=unifi-radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
 `docs/` from it.
 
 ## development

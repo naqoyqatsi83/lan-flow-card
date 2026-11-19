@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><title>unifi test</title><pre id="out"></pre>
+<!-- Client discovery from the UniFi Network integration (made-up clients of the demo). Every line should say PASS. -->
+<iframe id="f" src="../demo/?cfg=unifi&w=900" style="width:940px;height:900px;border:0"></iframe>
+<script>
+const f = document.getElementById("f"), log = [];
+const ok = (c, w) => log.push((c ? "PASS " : "FAIL ") + w);
+f.onload = () => setTimeout(async () => { try {
+  const el = f.contentDocument.querySelector("lan-flow-card");
+  const kids = (p) => el._nodes.filter((n) => n.parent === p).map((n) => n.name).join(", ");
+  ok(kids("ap1") === "Desk phone, Meeting tablet, Work laptop, Yard camera", "Wi-Fi clients of SSID Office: " + kids("ap1"));
+  ok(kids("guests") === "Guest phone", "SSID Guests: " + kids("guests"));
+  ok(kids("sw") === "Backup NAS, Office printer, Smart TV", "wired clients: " + kids("sw"));
+  const laptop = el._nodes.find((n) => n.name === "Work laptop");
+  ok(laptop._src === "unifi" && laptop.down === "sensor.work_laptop_tx" && laptop.up === "sensor.work_laptop_rx", "TX is down, RX is up");
+  ok(Math.abs(el._rate(laptop, "down") - 15.2) < 1e-9, "MB/s converted to Mbit/s");
+  ok(laptop.icon === "mdi:laptop" && el._nodes.find((n) => n.name === "Smart TV").icon === "mdi:lan-connect", "icons");
+  // no AmpliFi trackers picked up, and AmpliFi nodes don't pick up UniFi ones
+  ok(!el._nodes.some((n) => n._src === "amplifi"), "no AmpliFi clients in a UniFi card");
+  // sensors without translation key: found by the entity id's end
+  const ents = { ...el._hass.entities };
+  ents["sensor.work_laptop_rx"] = { ...ents["sensor.work_laptop_rx"], translation_key: undefined };
+  ents["sensor.work_laptop_tx"] = { ...ents["sensor.work_laptop_tx"], translation_key: undefined };
+  const save = el._hass;
+  el._hass = { ...save, entities: ents };
+  const s = el._unifiSensors("device_tracker.work_laptop");
+  el._hass = save;
+  ok(s.down === "sensor.work_laptop_tx" && s.up === "sensor.work_laptop_rx", "sensors found by entity id");
+  // panel: facts, no signal strip, history from the RX / TX sensors
+  el._openPanel(laptop, { y: 100 });
+  await new Promise((r) => setTimeout(r, 300));
+  const panel = el.shadowRoot.querySelector(".panel");
+  const facts = panel.querySelector(".facts").textContent;
+  ok(facts.includes("192.168.10.21") && facts.includes("Office") && !facts.includes("signal"), "facts: " + facts);
+  ok(panel.querySelector(".chart svg") && !panel.textContent.includes("signal"), "chart without signal strip");
+  const tv = el._nodes.find((n) => n.name === "Smart TV");
+  el._openPanel(tv, { y: 100 });
+  ok(el.shadowRoot.querySelector(".panel .facts").textContent.includes("wired"), "wired client says wired");
+  } catch (e) { ok(false, "error: " + e.message); }
+  document.getElementById("out").textContent = log.join("\n");
+}, 1500);
+</script>

@@ -130,6 +130,33 @@ device("d_router", "Router", [
   ["sensor.router_lan2_down", "LAN2 sent"], ["sensor.router_lan2_up", "LAN2 received"],
 ]);
 
+// Clients as the UniFi Network integration reports them: a tracker per client (ip, mac, essid and ap_mac on
+// Wi-Fi), and RX / TX sensors in MB/s on the client's device. No signal. Made-up, locally administered MACs.
+const unifi = [
+  ["work_laptop", "Work laptop", "192.168.10.21", "Office", 1, 1.9, 0.12], ["desk_phone", "Desk phone", "192.168.10.22", "Office", 1, 0.03, 0.01],
+  ["tablet_2", "Meeting tablet", "192.168.10.23", "Office", 2, 0.4, 0.02], ["guest_phone", "Guest phone", "192.168.10.40", "Guests", 2, 0.08, 0.004],
+  ["camera_yard", "Yard camera", "192.168.10.51", "Office", 2, 0.002, 0.31],
+  ["smart_tv", "Smart TV", "192.168.10.60", null, 0, 2.6, 0.05], ["printer_2", "Office printer", "192.168.10.61", null, 0, 0, 0],
+  ["nas_2", "Backup NAS", "192.168.10.62", null, 0, 0.2, 4.4],
+];
+unifi.forEach(([key, name, ip, essid, ap, down, up], i) => {
+  const id = "device_tracker." + key, mac = "02:00:00:00:00:" + String(10 + i).padStart(2, "0");
+  const a = { friendly_name: name, ip, mac, name, oui: "Example", source_type: "router" };
+  if (essid) Object.assign(a, { essid, ap_mac: "02:00:00:00:01:0" + ap, radio_proto: "ax", vlan: 0 });
+  states[id] = { state: "home", attributes: a };
+  devices["u_" + key] = { id: "u_" + key, name };
+  entities[id] = { entity_id: id, device_id: "u_" + key, platform: "unifi" };
+  // UniFi counts from the access point's side: TX goes to the client
+  for (const [k, v] of [["rx", up], ["tx", down]]) {
+    const sid = "sensor." + key + "_" + k;
+    entities[sid] = { entity_id: sid, device_id: "u_" + key, platform: "unifi", translation_key: "client_bandwidth_" + k };
+    states[sid] = { state: String(v), attributes: { friendly_name: name + " " + k.toUpperCase(), unit_of_measurement: "MB/s" } };
+  }
+});
+rate("sensor.gw_wan_down", 52.3); rate("sensor.gw_wan_up", 6.4);
+rate("sensor.gw_ap_down", 2.4, "MB/s"); rate("sensor.gw_ap_up", 0.45, "MB/s");
+rate("sensor.gw_switch_down", 2.8, "MB/s"); rate("sensor.gw_switch_up", 4.5, "MB/s");
+
 // Made-up history: a daily rhythm with evening peaks, plus noise. Same answer for the same entity.
 function seeded(s) { let x = 0; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return () => ((x = (x * 1103515245 + 12345) >>> 0) / 2 ** 32); }
 async function callWS(msg) {
@@ -138,8 +165,9 @@ async function callWS(msg) {
   const ids = msg.entity_ids || msg.statistic_ids;
   for (const id of ids) {
     const rnd = seeded(id);
-    const scale = id.includes("signal") ? 0 : id.endsWith("_up") || id.includes("_up") ? 0.15 : 1;
-    const base = id.startsWith("sensor.wi_fi_") ? 900 : 20; // kbit/s for clients, Mbit/s for cables
+    const scale = id.includes("signal") ? 0 : id.includes("_up") || id.endsWith("_rx") ? 0.15 : 1;
+    // kbit/s for AmpliFi clients, MB/s for UniFi clients, Mbit/s for cables
+    const base = id.startsWith("sensor.wi_fi_") ? 900 : /_[rt]x$/.test(id) ? 0.3 : 20;
     const value = (t) => {
       if (id.includes("signal")) return 70 + 8 * Math.sin(t / 7e6) + 4 * rnd();
       const h = new Date(t).getHours() + new Date(t).getMinutes() / 60;
@@ -183,6 +211,19 @@ const configs = {
     ],
   },
 };
+configs.unifi = {
+  title: "UniFi", down: "sensor.gw_wan_down", up: "sensor.gw_wan_up",
+  nodes: [
+    { id: "gw", name: "Gateway", icon: "mdi:router-network", color: "#66bb6a" },
+    { id: "ap1", parent: "gw", name: "Office AP", icon: "mdi:access-point", color: "#29b6f6", down: "sensor.gw_ap_down", up: "sensor.gw_ap_up",
+      clients: { source: "unifi", connection: "wifi", ssid: "Office", icon: "mdi:laptop" } },
+    { id: "guests", parent: "gw", name: "Guest Wi-Fi", icon: "mdi:wifi", color: "#ffca28",
+      clients: { source: "unifi", ssid: "Guests", icon: "mdi:cellphone" } },
+    { id: "sw", parent: "gw", name: "Switch", icon: "mdi:switch", color: "#7e57c2", down: "sensor.gw_switch_down", up: "sensor.gw_switch_up",
+      clients: { source: "unifi", connection: "wired", icon: "mdi:lan-connect" } },
+  ],
+};
+configs["unifi-radial"] = { ...configs.unifi, layout: "radial" };
 configs.radial = { ...configs.wifi, layout: "radial" };
 configs["network-radial"] = { ...configs.network, layout: "radial" };  // shows why radial is not possible
 

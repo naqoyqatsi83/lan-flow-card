@@ -11,10 +11,10 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
 | `lan-flow-card.js` | the whole card: layout (tree, client lists, radial), live update, history panel, visual editor |
 | `hacs.json`, `README.md`, `LICENSE` | HACS manifest, user docs, MIT |
 | `examples/` | YAML configs with made-up entity names, and the AmpliFi per-device sensor automation |
-| `demo/index.html` | the card outside HA with made-up devices, traffic and history (`?cfg=network|wifi|radial|network-radial`, `w=`, `panel=`, `t=`, `light=1`) |
+| `demo/index.html` | the card outside HA with made-up devices, traffic and history (`?cfg=network|wifi|radial|network-radial|unifi|unifi-radial`, `w=`, `panel=`, `t=`, `light=1`) |
 | `demo/make-gifs.sh` | rebuilds `docs/*.gif` from the demo (headless Chromium, ImageMagick, ffmpeg) |
 | `dev/` | loader and docs for running a development copy next to the release in the same HA |
-| `tests/` | `run.sh` (all automated checks), browser tests: `editor-test.html` (12 checks), `panel-keep-test.html` (5 checks), `fields-test.html` (9 checks), `panel-test.html` (look at a screenshot) |
+| `tests/` | `run.sh` (all automated checks), browser tests: `editor-test.html` (12 checks), `panel-keep-test.html` (5 checks), `fields-test.html` (9 checks), `unifi-test.html` (11 checks), `panel-test.html` (look at a screenshot) |
 | `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` | release notes, rules for contributors, private vulnerability reports |
 | `.github/` | CI workflow (runs `tests/run.sh`), issue templates (bug, idea), pull request template |
 
@@ -25,6 +25,9 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
 - `clients:` nodes get their children from `device_tracker` states with `SignalQuality` and an IP prefix (the AmpliFi
   integration's attributes: `RxBytes_15sec`/`TxBytes_15sec` = bytes of the last 15 s, missing when 0, Rx towards
   the device). A change in that set rebuilds the card; an open history panel must survive the rebuild.
+- Other routers are entries in `SOURCES`. UniFi Network: trackers with registry `platform: unifi` and a `mac`
+  attribute; rates from RX / TX sensors on the tracker's device (`translation_key` `client_bandwidth_rx`/`_tx`, MB/s),
+  TX = down (counted from the access point's side; still to be confirmed by a tester); no signal.
 - The history panel reads the per-device sensors of `examples/amplifi-client-sensors-automation.yaml` (MQTT device
   identifier `amplifi_client_<tracker without amplifi_>`, entity suffixes `_down`, `_up`, `_signal`, possibly
   `_2`), 1-24 h from `history/history_during_period`, 7-30 d from `recorder/statistics_during_period` (hourly).
