@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in the card doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead. Remove IPs, hostnames, MACs, SSIDs and entity names you don't want public.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Card version
+      description: HACS shows it, or the release tag you installed.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version and browser
+      placeholder: 2026.11.2, Chrome 142 / companion app
+    validations:
+      required: true
+  - type: input
+    id: router
+    attributes:
+      label: Router or integration
+      description: For `clients:` nodes, the integration that provides the device trackers.
+      placeholder: AmpliFi
+  - type: textarea
+    id: config
+    attributes:
+      label: Card YAML
+      description: The card's config, with names changed as you like.
+      render: yaml
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshot or browser console errors

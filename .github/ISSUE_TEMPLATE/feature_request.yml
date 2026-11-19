@@ -1,0 +1,16 @@
+name: Idea
+description: Something the card could show or do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you want to see or do
+      description: Your network or setup, and what you'd look for in the card.
+    validations:
+      required: true
+  - type: textarea
+    id: router
+    attributes:
+      label: Router or integration
+      description: For client discovery, the integration and the attributes its device trackers have (names changed as you like).

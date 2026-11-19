@@ -1,0 +1,36 @@
+# Clients found from the UniFi Network integration: a node per access point network and one for the wired clients.
+# Needs, in the UniFi integration's options: "Track network clients", "Include wired network clients" (for the
+# wired node) and "Bandwidth usage sensors for network clients" (the RX / TX sensors the rates come from).
+# UniFi reports no signal strength, so there is no signal next to the clients and no signal strip in the panel.
+# Entity names below are made up; pick your own in the visual editor.
+type: custom:lan-flow-card
+title: UniFi
+down: sensor.gateway_wan_rx
+up: sensor.gateway_wan_tx
+nodes:
+  - id: gateway
+    name: Gateway
+    icon: mdi:router-network
+    color: "#66bb6a"
+  - id: office
+    parent: gateway
+    name: Office Wi-Fi
+    icon: mdi:access-point
+    color: "#29b6f6"
+    clients:
+      source: unifi
+      connection: wifi
+      ssid: Office              # only this network (a list works too)
+      icon: mdi:cellphone
+  - id: switch
+    parent: gateway
+    name: Switch
+    icon: mdi:switch
+    color: "#7e57c2"
+    down: sensor.switch_port_1_rx    # port 1 is the uplink: what the switch receives there comes from the gateway
+    up: sensor.switch_port_1_tx
+    clients:
+      source: unifi
+      connection: wired
+      prefix: 192.168.1.        # optional: only these IPs
+      icon: mdi:lan-connect

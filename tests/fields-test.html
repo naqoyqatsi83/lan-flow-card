@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><title>fields test</title><pre id="out"></pre>
+<!-- "all fields" in the history panel, for a configured node and for a client. Every line should say PASS. -->
+<iframe id="f" src="../demo/?cfg=network&w=900" style="width:940px;height:900px;border:0"></iframe>
+<script>
+const f = document.getElementById("f"), log = [];
+const ok = (c, w) => log.push((c ? "PASS " : "FAIL ") + w);
+f.onload = () => setTimeout(() => { try {
+  const el = f.contentDocument.querySelector("lan-flow-card");
+  const nas = el._nodes.find((n) => n.id === "nas");
+  const rows = el._nodeFields(nas);
+  const keys = rows.map((r) => r.key || "# " + r.head);
+  ok(keys[0] === "down: Office switch Port 2 sent" && rows[0].value === "0.8 Mbit/s", "own down sensor first, with value and unit");
+  ok(el._nodeFields(el._nodes.find((n) => n.id === "tv")).some((r) => r.key === "link: Office switch Port 4 link" && r.value === "down"), "own link sensor");
+  ok(keys.includes("# Office switch"), "heading with the device name");
+  ok(keys.includes("Temperature") && keys.includes("Port 4 sent"), "rest of the device, without the device name");
+  ok(keys.filter((k) => k.endsWith("Port 2 sent")).length === 1, "own sensors not listed twice");
+  ok(rows.filter((r) => r.entity).every((r) => r.entity.startsWith("sensor.")), "entity rows carry their entity");
+  const internet = el._nodes.find((n) => !n.parent);
+  ok(el._nodeFields(internet).length === 0, "node without entities: no rows");
+  // open the panel on the NAS and the list
+  const name = [...el.shadowRoot.querySelectorAll(".name")].find((d) => d.textContent.startsWith("NAS"));
+  const node = [...el.shadowRoot.querySelectorAll(".node")].find((d) => d.style.left === name.style.left && d.style.top === name.style.top);
+  node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  const panel = el.shadowRoot.querySelector(".panel");
+  const more = panel && panel.querySelector("button.more");
+  ok(more && more.textContent === "all fields", "panel has an all fields button");
+  more && more.click();
+  const box = panel && panel.querySelector(".fields.open");
+  ok(box && box.querySelectorAll(".group").length === 1 && box.querySelectorAll(".link").length >= 10, "list open, links and heading");
+  } catch (e) { ok(false, "error: " + e.message); }
+  document.getElementById("out").textContent = log.join("\n");
+}, 1500);
+</script>

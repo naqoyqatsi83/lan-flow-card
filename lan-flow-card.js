@@ -10,8 +10,10 @@
  * Rates are converted to Mbit/s from the sensor's unit (bit/s, kbit/s, Mbit/s, B/s, kB/s, KiB/s, MB/s, ...).
  * Dots run along the cable in the direction of the traffic, thicker and faster the more it carries.
  *
- * clients: on a node, its children come from the AmpliFi integration's trackers instead of the config: every
- *   tracker that is home, has SignalQuality (a Wi-Fi client) and an IP (Address) starting with clients.prefix.
+ * clients: on a node, its children come from the router integration's trackers instead of the config: every
+ *   tracker that is home, comes from a known source (SOURCES; clients.source picks one) and has an IP starting
+ *   with clients.prefix. UniFi: rates from the client's RX / TX sensors, no signal; clients.ssid, clients.ap
+ *   (access point MAC) and clients.connection (wifi, wired) narrow it down. AmpliFi (the rest of this paragraph): has SignalQuality.
  *   Down / up from RxBytes_15sec / TxBytes_15sec (bytes of the last 15 s, missing when 0; Rx is towards the
  *   device), beside it the signal quality. New devices show up by themselves; sorted by name. The node gets one
  *   column, its devices hang below it off a trunk, one per line. Optional: clients.icon, clients.exclude.
@@ -42,6 +44,14 @@ const SVG = "http://www.w3.org/2000/svg";
 // The element name comes from this file's URL (`?name=lan-flow-card-dev`), so a development copy can run next to
 // the released card in the same Home Assistant. See dev/README.md.
 const NAME = new URL(import.meta.url).searchParams.get("name") || "lan-flow-card";
+
+// Where `clients:` finds devices: how a device_tracker is recognized (its attributes, its entity registry entry).
+// amplifi: rates and signal are tracker attributes; history from the automation "AmpliFi client sensors".
+// unifi: the UniFi Network integration; rates are separate RX / TX sensors on the client's device (MB/s), no signal.
+const SOURCES = {
+  amplifi: (a) => a.SignalQuality !== undefined && a.SignalQuality !== null,
+  unifi: (a, e) => !!e && e.platform === "unifi" && a.mac !== undefined,
+};
 
 function mbit(hass, entityId) {
   const st = entityId && hass.states[entityId];
@@ -135,33 +145,56 @@ class LanFlowCard extends HTMLElement {
     if (!base.some((n) => n.clients)) return;
     const gen = [];
     const states = this._hass.states;
+    const reg = this._hass.entities || {};
+    const list = (v) => (v === undefined || v === null ? null : [].concat(v).map((x) => String(x).toLowerCase()));
     for (const parent of base.filter((n) => n.clients)) {
       const c = parent.clients;
       const exclude = new Set(c.exclude || []);
+      const ssid = list(c.ssid), ap = list(c.ap);
       const mine = [];
       for (const [id, st] of Object.entries(states)) {
         if (!id.startsWith("device_tracker.") || st.state !== "home" || exclude.has(id)) continue;
         const a = st.attributes;
-        if (a.SignalQuality === undefined || a.SignalQuality === null) continue;
+        const src = Object.keys(SOURCES).find((k) => (!c.source || c.source === k) && SOURCES[k](a, reg[id]));
+        if (!src) continue;
         if (!String(a.Address || a.ip || "").startsWith(c.prefix || "")) continue;
-        mine.push({
-          id: id, parent: parent.id, name: a.friendly_name || id.slice(15), entity: id, _client: id,
-          icon: c.icon || "mdi:wifi", color: parent.color, note: " ",
-        });
+        // UniFi: Wi-Fi clients have an SSID and an access point, wired ones neither
+        const wired = src === "unifi" && !a.essid && !a.ap_mac;
+        if (c.connection && c.connection !== (wired ? "wired" : "wifi")) continue;
+        if (ssid && !ssid.includes(String(a.essid || "").toLowerCase())) continue;
+        if (ap && !ap.includes(String(a.ap_mac || "").toLowerCase())) continue;
+        const node = {
+          id: id, parent: parent.id, name: a.friendly_name || id.slice(15), entity: id, _client: id, _src: src,
+          icon: c.icon || (wired ? "mdi:lan-connect" : "mdi:wifi"), color: parent.color, note: " ",
+        };
+        if (src === "unifi") Object.assign(node, this._unifiSensors(id));
+        mine.push(node);
       }
       mine.sort((x, y) => x.name.localeCompare(y.name));
       gen.push(...mine);
     }
-    const key = gen.map((n) => n.parent + ">" + n.id + ">" + n.name).join(",");
+    const key = gen.map((n) => [n.parent, n.id, n.name, n.down, n.up].join(">")).join(",");
     if (key === this._clientKey) return;
     this._clientKey = key;
     this._nodes = base.concat(gen);
     this._built = false;
   }
 
-  // A cable's rate in Mbit/s: from the node's sensor, or for a client from its tracker.
+  // A UniFi client's rate sensors: RX / TX on the tracker's device (translation key, else the entity id's end).
+  // UniFi counts from the network's side, like a switch port: TX (tx_bytes-r) is the client's download.
+  _unifiSensors(id) {
+    const reg = this._hass.entities || {};
+    const dev = reg[id] && reg[id].device_id;
+    if (!dev) return {};
+    const mine = Object.values(reg).filter((e) => e.device_id === dev && e.entity_id.startsWith("sensor."));
+    const pick = (k) => (mine.find((e) => e.translation_key === "client_bandwidth_" + k) ||
+      mine.find((e) => new RegExp("_" + k + "(_\\d+)?$").test(e.entity_id)) || {}).entity_id;
+    return { down: pick("tx"), up: pick("rx") };
+  }
+
+  // A cable's rate in Mbit/s: from the node's sensor, or for an AmpliFi client from its tracker.
   _rate(n, dir) {
-    if (!n._client) return mbit(this._hass, n[dir]);
+    if (n._src !== "amplifi") return mbit(this._hass, n[dir]);
     const st = this._hass.states[n._client];
     if (!st) return null;
     const v = parseFloat(st.attributes[dir === "down" ? "RxBytes_15sec" : "TxBytes_15sec"]);
@@ -289,8 +322,11 @@ class LanFlowCard extends HTMLElement {
       .panel .fields { display: none; max-height: 160px; overflow: auto; margin: 4px 0; font-size: 12px;
                        border: 1px solid var(--divider-color, #444); border-radius: 6px; padding: 4px 8px; }
       .panel .fields.open { display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
-      .panel .fields span:nth-child(odd) { color: var(--primary-text-color); }
-      .panel .fields span:nth-child(even) { overflow-wrap: anywhere; }
+      .panel .fields .k { color: var(--primary-text-color); }
+      .panel .fields .v { overflow-wrap: anywhere; }
+      .panel .fields .group { grid-column: 1 / -1; color: var(--secondary-text-color); font-weight: 500;
+                             margin-top: 4px; border-top: 1px solid var(--divider-color, #444); padding-top: 3px; }
+      .panel .fields .link { cursor: pointer; text-decoration: underline dotted; }
       .panel .hover { position: absolute; top: 0; pointer-events: none; display: none; white-space: nowrap;
                       background: var(--card-background-color, #1c1c1c); border: 1px solid var(--divider-color, #444);
                       border-radius: 6px; padding: 4px 8px; font-size: 12.5px; line-height: 17px; z-index: 2;
@@ -418,7 +454,7 @@ class LanFlowCard extends HTMLElement {
       icon.setAttribute("icon", n.icon || "mdi:lan");
       circle.appendChild(icon);
       if (n.down || n.up) {
-        // the history panel of this node's cable; its `details` button opens n.entity
+        // the history panel of this node's cable; "all fields" there lists n.entity and the rest of its device
         circle.style.cursor = "pointer";
         circle.addEventListener("click", () => this._openPanel(n, p));
       } else if (n.entity) {
@@ -512,7 +548,8 @@ class LanFlowCard extends HTMLElement {
     const devs = this._nodes.filter((n) => n._client).map((n) => {
       const st = this._hass.states[n._client];
       const q = st ? parseFloat(st.attributes.SignalQuality) : NaN;
-      return { n, q: isFinite(q) ? q : 50, group: this._nodes.find((m) => m.id === n.parent) };
+      // no signal (UniFi): halfway out
+      return { n, q: isFinite(q) ? q : 75, sig: isFinite(q), group: this._nodes.find((m) => m.id === n.parent) };
     });
     const colW = Math.min(200, Math.floor(width * 0.26));
     const rMax = Math.max(90, Math.min(230, width / 2 - colW - 34));
@@ -564,7 +601,7 @@ class LanFlowCard extends HTMLElement {
       legend.appendChild(s);
     }
     head.appendChild(legend);
-    for (const q of [90, 70]) {
+    for (const q of devs.some((d) => d.sig) ? [90, 70] : []) {
       const r = rMin + (rMax - rMin) * (100 - q) / 50;
       svg.appendChild(svgEl("circle", { cx, cy, r, class: "ring" }));
       const t = svgEl("text", { x: cx, y: cy - r - 3, class: "ringlabel" });
@@ -640,6 +677,62 @@ class LanFlowCard extends HTMLElement {
     this.dispatchEvent(ev);
   }
 
+  // A tracker's attributes as rows for "all fields".
+  _trackerFields(id) {
+    const st = this._hass.states[id];
+    return Object.entries(st ? st.attributes : {}).sort(([a], [b]) => a.localeCompare(b))
+      .filter(([k]) => !["friendly_name", "icon", "entity_picture"].includes(k))
+      .map(([k, v]) => ({ key: k, value: typeof v === "object" ? JSON.stringify(v) : String(v) }));
+  }
+
+  // A configured node's rows for "all fields": its own entities with their values, the attributes of `entity`,
+  // then the other entities of their devices (a switch port node shows the whole switch), each device under its name.
+  _nodeFields(n) {
+    const hass = this._hass;
+    const val = (id) => {
+      const st = hass.states[id];
+      if (!st) return "-";
+      const u = st.attributes.unit_of_measurement;
+      return u ? st.state + " " + u : st.state;
+    };
+    const label = (id) => (hass.states[id] && hass.states[id].attributes.friendly_name) || id;
+    const rows = [];
+    const seen = new Set();
+    for (const k of ["down", "up", "link", "note_entity", "entity"]) {
+      const id = n[k];
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      rows.push({ key: k.replace("_entity", "") + ": " + label(id), value: val(id), entity: id });
+    }
+    const st = n.entity && hass.states[n.entity];
+    if (st) {
+      const skip = ["friendly_name", "icon", "entity_picture", "unit_of_measurement", "device_class", "state_class"];
+      for (const [k, v] of Object.entries(st.attributes).sort(([a], [b]) => a.localeCompare(b))) {
+        if (!skip.includes(k)) rows.push({ key: k, value: typeof v === "object" ? JSON.stringify(v) : String(v) });
+      }
+    }
+    const reg = hass.entities || {};
+    const devs = [...new Set([...seen].map((id) => reg[id] && reg[id].device_id).filter((d) => d))];
+    for (const d of devs) {
+      const dev = (hass.devices || {})[d] || {};
+      const name = dev.name_by_user || dev.name || "";
+      const other = Object.values(reg).filter((e) => e.device_id === d && !seen.has(e.entity_id) && !e.hidden &&
+        hass.states[e.entity_id]).map((e) => e.entity_id);
+      if (!other.length) continue;
+      rows.push({ head: name || "same device" });
+      const short = (id) => {
+        const l = label(id);
+        return name && l.startsWith(name + " ") ? l.slice(name.length + 1) : l;
+      };
+      other.sort((a, b) => short(a).localeCompare(short(b), undefined, { numeric: true }));
+      for (const id of other) {
+        seen.add(id);
+        rows.push({ key: short(id), value: val(id), entity: id });
+      }
+    }
+    return rows;
+  }
+
   // History panel: down above the axis, up below it, signal underneath (clients). A client's data comes from its
   // sensors (automation "AmpliFi client sensors"), any other node's from its down / up sensors.
   _openPanel(n, p) {
@@ -658,7 +751,12 @@ class LanFlowCard extends HTMLElement {
       const st = hass.states[n._client];
       const a = st ? st.attributes : {};
       facts = [a.Address || a.ip, a.SignalQuality !== undefined ? "signal " + a.SignalQuality + "%" : null,
-        a.RxBitrate ? "link " + rate(a.RxBitrate / 1000, true) : null, a.Mode, a.mac];
+        a.RxBitrate ? "link " + rate(a.RxBitrate / 1000, true) : null, a.Mode, a.essid,
+        n._src === "unifi" && !a.essid && !a.ap_mac ? "wired" : null, a.mac];
+    }
+    if (n._src === "unifi") {
+      ids = { down: n.down, up: n.up };
+    } else if (n._client) {
       // The client's sensors: the MQTT device with identifier amplifi_client_<key>.
       const key = n._client.slice(15).replace(/^amplifi_/, "");
       const dev = Object.values(hass.devices || {}).find((d) =>
@@ -678,7 +776,7 @@ class LanFlowCard extends HTMLElement {
     const factor = (id) => {
       const u = hass.states[id] && hass.states[id].attributes.unit_of_measurement;
       // client sensors are kbit/s (automation "AmpliFi client sensors"); others Mbit/s unless the unit says else
-      return UNIT_TO_MBIT[u] === undefined ? (n._client ? 1e-3 : 1) : UNIT_TO_MBIT[u];
+      return UNIT_TO_MBIT[u] === undefined ? (n._src === "amplifi" ? 1e-3 : 1) : UNIT_TO_MBIT[u];
     };
     panel.innerHTML = `<div class="top" title="drag to move"><b></b><button class="x" title="close">\u00d7</button></div>
       <div class="facts"></div><div class="fields"></div><div class="ranges"></div><div class="chart"></div>`;
@@ -699,41 +797,50 @@ class LanFlowCard extends HTMLElement {
       });
       ranges.appendChild(b);
     }
-    if (n._client) {
-      // the tracker's raw fields right here (HA's own dialog would only show home / away)
+    // "all fields": everything known about the node right here (HA's own dialog would show one entity only)
+    const fieldRows = n._client ? () => this._trackerFields(n._client) : () => this._nodeFields(n);
+    if (n._client || fieldRows().length) {
       const more = document.createElement("button");
       more.className = "more";
       more.textContent = "all fields";
-      more.title = "everything the router reports for this device";
+      more.title = n._client ? "everything the router reports for this device"
+        : "this node's sensors and the rest of their device";
       const box = panel.querySelector(".fields");
       more.addEventListener("click", () => {
-        const st = this._hass.states[n._client];
         box.innerHTML = "";
-        for (const [k, v] of Object.entries(st ? st.attributes : {}).sort(([a], [b]) => a.localeCompare(b))) {
-          if (["friendly_name", "icon", "entity_picture"].includes(k)) continue;
+        for (const r of fieldRows()) {
           const key = document.createElement("span");
-          key.textContent = k;
           const val = document.createElement("span");
-          val.textContent = typeof v === "object" ? JSON.stringify(v) : String(v);
+          if (r.head) {
+            key.className = "group";
+            key.textContent = r.head;
+            box.append(key);
+            continue;
+          }
+          key.className = "k";
+          val.className = "v";
+          key.textContent = r.key;
+          val.textContent = r.value;
+          if (r.entity) {
+            // a tap on an entity opens HA's dialog for it (its own history, settings)
+            key.classList.add("link");
+            key.title = r.entity;
+            key.addEventListener("click", () => this._more(r.entity));
+          }
           box.append(key, val);
         }
         box.classList.toggle("open");
         more.classList.toggle("on", box.classList.contains("open"));
       });
       ranges.appendChild(more);
-    } else if (n.entity) {
-      const more = document.createElement("button");
-      more.className = "more";
-      more.textContent = "details";
-      more.title = n.entity;
-      more.addEventListener("click", () => this._more(n.entity));
-      ranges.appendChild(more);
     }
     const chart = panel.querySelector(".chart");
     const load = async () => {
       if (!ids.down && !ids.up) {
-        chart.innerHTML = n._client ? `<div class="msg">No history yet: this device has no sensors from the
+        chart.innerHTML = n._src === "amplifi" ? `<div class="msg">No history yet: this device has no sensors from the
           automation "AmpliFi client sensors" (new devices get them within 15 min).</div>`
+          : n._src === "unifi" ? `<div class="msg">No rate sensors for this device: turn on "Bandwidth usage sensors
+          for network clients" in the UniFi integration's options.</div>`
           : `<div class="msg">No sensors for this cable.</div>`;
         return;
       }
@@ -1056,14 +1163,16 @@ const LABELS = {
   title: "Title", layout: "Layout", down: "Down sensor (towards it)", up: "Up sensor (away from it)",
   latency: "Ping sensor (ms)", busy_mbit: "Glow from (Mbit/s)", idle_mbit: "Dots from (Mbit/s)",
   id: "ID", name: "Name", parent: "Parent", icon: "Icon", color: "Color (#rrggbb)", link: "Link sensor",
-  entity: "Details entity", note: "Note (fixed text)", note_entity: "Note from entity", note_attribute: "Attribute",
-  clients: "Find clients automatically (AmpliFi trackers)", prefix: "IP prefix, e.g. 192.168.1.",
-  exclude: "Leave out",
+  entity: "Main entity", note: "Note (fixed text)", note_entity: "Note from entity", note_attribute: "Attribute",
+  clients: "Find clients automatically (AmpliFi, UniFi)", prefix: "IP prefix, e.g. 192.168.1.",
+  exclude: "Leave out", source: "Router integration", ssid: "SSID (UniFi)", ap: "Access point MAC (UniFi)",
+  connection: "Connection (UniFi)",
 };
 const HELPERS = {
   down: "Traffic from the parent to this node", up: "Traffic from this node to the parent",
-  link: "A state of \"down\" dims the node", entity: "Opened by \"details\" in the history panel",
+  link: "A state of \"down\" dims the node", entity: "Its attributes are in \"all fields\" of the history panel",
   layout: "Radial needs nodes that find their clients", idle_mbit: "Below this a cable has no dots",
+  source: "Empty: any that is found", connection: "Empty: Wi-Fi and wired", ap: "Only the clients of this access point",
 };
 const sensor = { entity: { domain: "sensor" } };
 const CARD_SCHEMA = [
@@ -1101,7 +1210,12 @@ function nodeSchema(node, nodes) {
       { name: "note_entity", selector: { entity: {} } },
       { name: "note_attribute", selector: { attribute: {} }, context: { filter_entity: "note_entity" } }] },
     ...(root ? [] : [{ name: "clients", type: "expandable", title: LABELS.clients, schema: [
+      { name: "source", selector: { select: { mode: "dropdown", options: [
+        { value: "amplifi", label: "AmpliFi" }, { value: "unifi", label: "UniFi Network" }] } } },
       { name: "prefix", selector: { text: {} } }, { name: "icon", selector: { icon: {} } },
+      { type: "grid", name: "", schema: [{ name: "ssid", selector: { text: {} } }, { name: "ap", selector: { text: {} } }] },
+      { name: "connection", selector: { select: { mode: "dropdown", options: [
+        { value: "wifi", label: "Wi-Fi" }, { value: "wired", label: "Wired" }] } } },
       { name: "exclude", selector: { entity: { multiple: true, domain: "device_tracker" } } }] }]),
   ];
 }

@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/HACS-custom-41BDF5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white" alt="HACS custom">
+  <img src="https://img.shields.io/badge/Home%20Assistant-card-18BCF2?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Home Assistant card">
+  <img src="https://img.shields.io/badge/JavaScript-no%20dependencies-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="JavaScript, no dependencies">
+  <img src="https://img.shields.io/badge/router-AmpliFi-0559C9?style=for-the-badge&logo=ubiquiti&logoColor=white" alt="AmpliFi">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+</p>
+
 # LAN Flow Card
 
 A Home Assistant dashboard card that draws your network as a tree, with moving dots on every cable for its live
@@ -6,7 +14,7 @@ be found automatically, and a tap on any node opens its traffic history.
 
 No dependencies, one JavaScript file.
 
-![A wired network as a tree, with live traffic on every cable](docs/tree.gif)
+![A wired network as a tree, with live traffic on every cable](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/tree.gif)
 
 > Status: early. It grew out of one home network (Netgear switches, an EdgeRouter, an AmpliFi mesh). Automatic
 > client discovery currently understands the AmpliFi integration only; other routers are planned (see *roadmap*).
@@ -15,19 +23,21 @@ No dependencies, one JavaScript file.
 
 - **Tree of any depth** built from your own rate sensors: switch ports, router interfaces, a Pi's network
   interfaces, anything with a data rate. Units are converted (bit/s to GB/s, kB/s, KiB/s, ...).
-- **Clients found automatically** under a node with `clients:` (AmpliFi trackers), one per line off a trunk, with
+- **Clients found automatically** under a node with `clients:` (AmpliFi or UniFi Network trackers), one per line off a trunk, with
   rates and Wi-Fi signal; new devices appear by themselves.
 - **Radial view** (`layout: radial`): the access point in the middle, devices around it in a sector per network, the
   stronger the signal the closer.
 - **History panel** on tap: down and up (and signal for clients) over 1 h, 6 h, 24 h from the recorder, 7 and 30
   days from long-term statistics. Hover (or touch) the chart for the values at that time; drag the panel by its
-  title; "all fields" lists everything the router reports for a client.
+  title; "all fields" lists everything the router reports for a client, and for any other node its sensors with their
+  values, the attributes of `entity` and the rest of their device (e.g. all ports of a switch); a tap on a name
+  opens its Home Assistant dialog.
 - **Phone friendly**: narrow cards switch to a compact layout.
 - **Visual editor**: card options and every node in HA's card editor, with entity and icon pickers; YAML still works.
 
 | Wi-Fi clients found automatically | radial view | history panel |
 |---|---|---|
-| ![clients](docs/clients.gif) | ![radial](docs/radial.gif) | ![panel](docs/panel.gif) |
+| ![clients](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/clients.gif) | ![radial](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/radial.gif) | ![panel](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/panel.gif) |
 
 All pictures come from the demo page with made-up devices (see *demo*).
 
@@ -82,34 +92,46 @@ nodes:
 | `name`, `icon`, `color` | label, `mdi:` icon, color of the circle and its dots |
 | `down`, `up` | rate sensors of the cable from the parent: down = towards this node |
 | `link` | sensor whose state `down` dims the node |
-| `entity` | opened by the panel's *details* button (or by a tap when the node has no rate sensors) |
+| `entity` | its attributes are listed in the panel's *all fields* (a tap on the node opens it when the node has no rate sensors) |
 | `note` | fixed text under the name |
 | `note_entity`, `note_attribute` | live text under the name, from an entity's state or attribute |
 | `clients` | find this node's children automatically, see below |
 
-### clients (AmpliFi)
+### clients
 
 ```yaml
 clients:
+  source: unifi          # amplifi or unifi; leave out for any that is found
   prefix: 192.168.1.     # devices whose IP starts with this
   icon: mdi:cellphone
-  exclude: [device_tracker.amplifi_some_device]
+  exclude: [device_tracker.some_device]
+  ssid: Office           # UniFi: only this Wi-Fi network (or a list)
+  ap: "aa:bb:cc:dd:ee:ff" # UniFi: only the clients of this access point (or a list)
+  connection: wifi       # UniFi: wifi or wired; leave out for both
 ```
 
-Every `device_tracker` that is `home`, has `SignalQuality` and an IP (`Address`) starting with `prefix` becomes a
-child. Rates come from `RxBytes_15sec` / `TxBytes_15sec` (bytes of the last 15 s). The history panel reads the
-per-device sensors made by [examples/amplifi-client-sensors-automation.yaml](examples/amplifi-client-sensors-automation.yaml).
+Every `device_tracker` that is `home`, comes from a supported integration and has an IP starting with `prefix`
+becomes a child.
+
+- **AmpliFi** (trackers with `SignalQuality`): rates come from `RxBytes_15sec` / `TxBytes_15sec` (bytes of the last
+  15 s), with the signal next to each client. The history panel reads the per-device sensors made by
+  [examples/amplifi-client-sensors-automation.yaml](examples/amplifi-client-sensors-automation.yaml).
+- **UniFi Network** (the official integration): rates and history come from each client's RX / TX sensors; turn on
+  "Bandwidth usage sensors for network clients" in the integration's options (and "Include wired network clients"
+  for wired ones). UniFi reports no signal strength, so there is none next to the clients and the radial view puts
+  them all at the same distance. UniFi counts from the access point's side: TX is towards the device.
 
 ## examples
 
 - [examples/network-tree.yaml](examples/network-tree.yaml): a wired network.
 - [examples/amplifi-clients.yaml](examples/amplifi-clients.yaml): an AmpliFi with its Wi-Fi clients.
+- [examples/unifi-clients.yaml](examples/unifi-clients.yaml): UniFi Wi-Fi and wired clients.
 
 ## demo
 
 `demo/index.html` runs the card outside Home Assistant, with made-up devices, traffic and history. Serve the repo
 folder over HTTP (`python3 -m http.server`) and open `http://localhost:8000/demo/?cfg=network` (or `cfg=wifi`,
-`cfg=radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
+`cfg=radial`, `cfg=unifi`, `cfg=unifi-radial`; `w=<px>` sets the width, `light=1` a light theme). `bash demo/make-gifs.sh` rebuilds the GIFs in
 `docs/` from it.
 
 ## development
@@ -119,6 +141,9 @@ To try changes in your own Home Assistant next to the released card (no second i
 
 ## tests
 
+`bash tests/run.sh` runs all automated checks (syntax, ASCII, both browser tests in headless Chromium; set
+`CHROME=` to the browser if it isn't on the path). CI runs it on every push and pull request.
+
 `tests/panel-keep-test.html` checks that an open panel survives the card rebuilding (a device joins or leaves).
 `tests/panel-test.html` opens a client's history panel in the demo, drags it, hovers the chart and unfolds "all
 fields" (look at the result). `tests/editor-test.html` checks the visual editor's logic (renaming, adding, moving, removing nodes) in a browser,
@@ -127,6 +152,12 @@ with a stand-in for HA's form: serve the repo over HTTP and open it; every line 
 ## roadmap
 
 - Client discovery for other routers (UniFi, Fritz!Box, OpenWrt, TP-Link Omada) and a generic attribute mapping.
+
+## contributing
+
+Bugs and ideas go to the [issues](https://github.com/naqoyqatsi83/lan-flow-card/issues/new/choose); see
+[CONTRIBUTING.md](CONTRIBUTING.md) for pull requests and [SECURITY.md](SECURITY.md) for vulnerabilities. Changes
+are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## license
 
