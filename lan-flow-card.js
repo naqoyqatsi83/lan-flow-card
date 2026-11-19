@@ -181,7 +181,7 @@ class LanFlowCard extends HTMLElement {
   }
 
   // A UniFi client's rate sensors: RX / TX on the tracker's device (translation key, else the entity id's end).
-  // UniFi counts from the access point's or switch port's side, like a switch port: TX goes to the client.
+  // UniFi counts from the network's side, like a switch port: TX (tx_bytes-r) is the client's download.
   _unifiSensors(id) {
     const reg = this._hass.entities || {};
     const dev = reg[id] && reg[id].device_id;

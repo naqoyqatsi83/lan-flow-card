@@ -27,7 +27,9 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
   the device). A change in that set rebuilds the card; an open history panel must survive the rebuild.
 - Other routers are entries in `SOURCES`. UniFi Network: trackers with registry `platform: unifi` and a `mac`
   attribute; rates from RX / TX sensors on the tracker's device (`translation_key` `client_bandwidth_rx`/`_tx`, MB/s),
-  TX = down (counted from the access point's side; still to be confirmed by a tester); no signal.
+  TX = down (UniFi counts from the network's side: `tx_bytes-r` is the client's download, as third-party UniFi
+  tools label it; HA's TX sensor is that counter); no signal. Tracked UniFi devices (APs, switches) have no `mac`
+  attribute on their trackers, so they are not taken for clients.
 - The history panel reads the per-device sensors of `examples/amplifi-client-sensors-automation.yaml` (MQTT device
   identifier `amplifi_client_<tracker without amplifi_>`, entity suffixes `_down`, `_up`, `_signal`, possibly
   `_2`), 1-24 h from `history/history_during_period`, 7-30 d from `recorder/statistics_during_period` (hourly).
