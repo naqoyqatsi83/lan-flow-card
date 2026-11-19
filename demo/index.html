@@ -115,7 +115,7 @@ const device = (key, name, ids) => {
     states[id].attributes.friendly_name = name + " " + label;
   }
 };
-states["sensor.switch_temperature"] = { state: "41", attributes: { unit_of_measurement: "°C" } };
+states["sensor.switch_temperature"] = { state: "41", attributes: { unit_of_measurement: "\u00b0C" } };
 states["sensor.switch_uptime"] = { state: "12.4", attributes: { unit_of_measurement: "d" } };
 link("sensor.switch_nas_link", "1000 Mbit/s"); link("sensor.switch_desktop_link", "1000 Mbit/s");
 device("d_switch", "Office switch", [
