@@ -14,7 +14,7 @@ be found automatically, and a tap on any node opens its traffic history.
 
 No dependencies, one JavaScript file.
 
-![A wired network as a tree, with live traffic on every cable](docs/tree.gif)
+![A wired network as a tree, with live traffic on every cable](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/tree.gif)
 
 > Status: early. It grew out of one home network (Netgear switches, an EdgeRouter, an AmpliFi mesh). Automatic
 > client discovery currently understands the AmpliFi integration only; other routers are planned (see *roadmap*).
@@ -37,7 +37,7 @@ No dependencies, one JavaScript file.
 
 | Wi-Fi clients found automatically | radial view | history panel |
 |---|---|---|
-| ![clients](docs/clients.gif) | ![radial](docs/radial.gif) | ![panel](docs/panel.gif) |
+| ![clients](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/clients.gif) | ![radial](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/radial.gif) | ![panel](https://github.com/naqoyqatsi83/lan-flow-card/raw/main/docs/panel.gif) |
 
 All pictures come from the demo page with made-up devices (see *demo*).
 

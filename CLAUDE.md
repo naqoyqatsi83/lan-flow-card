@@ -16,7 +16,7 @@ panel per node, and a visual editor. Meant for HACS; MIT licensed.
 | `dev/` | loader and docs for running a development copy next to the release in the same HA |
 | `tests/` | `run.sh` (all automated checks), browser tests: `editor-test.html` (12 checks), `panel-keep-test.html` (5 checks), `fields-test.html` (9 checks), `unifi-test.html` (11 checks), `panel-test.html` (look at a screenshot) |
 | `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` | release notes, rules for contributors, private vulnerability reports |
-| `.github/` | CI workflow (runs `tests/run.sh`), issue templates (bug, idea), pull request template |
+| `.github/` | CI workflow (runs `tests/run.sh`), HACS validation (skipped while private), issue templates (bug, idea), pull request template |
 
 ## how the code works (the parts that are easy to break)
 
@@ -56,7 +56,9 @@ Rebuild the GIFs after visible changes: `bash demo/make-gifs.sh`. Real HA testin
   `dev`.
 - `main` only holds releases. It changes only by merging `dev` with `--no-ff` at a final release
   (`Merge branch 'dev' into main for v<version>`); never commit to `main` directly.
-- Before merging into `main`: `tests/run.sh` passes, CI is green on `dev`, GIFs are current.
+- Before merging into `main`: `tests/run.sh` passes, CI and HACS validation are green on `dev`, GIFs are current.
+- README images are absolute links to `main` (`https://github.com/.../raw/main/docs/*.gif`), so HACS can show them
+  inside HA; new GIFs appear in the README once they reach `main` at a release.
 
 ## bugs and issues
 

@@ -1,0 +1,24 @@
+name: HACS
+
+# HACS's own validation (description, topics, issues, license, images, hacs.json, releases). It must pass before a
+# release that goes to the HACS default list. It needs a public repository, so it is skipped while this one is private.
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hacs:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: plugin
